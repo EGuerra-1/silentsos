@@ -11,6 +11,9 @@ services:
       - db
     env_file:
       - .env
+    environment:
+      DB_HOST: db
+      DB_PORT: ${DB_INTERNAL_PORT}
     volumes:
       - .:/app
       - /app/node_modules

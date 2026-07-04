@@ -57,4 +57,7 @@ class Auth {
     }
 }
 
-module.exports = Auth;
+module.exports = {
+    generateToken: Auth.generateToken,
+    verifyToken: Auth.verifyToken,
+};
