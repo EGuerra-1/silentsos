@@ -37,6 +37,8 @@ class User extends BaseEntity {
     }
     static associate(models) {
         this.hasMany(models.EmergencyContact, { foreignKey: 'user_id', as: 'emergencyContacts' });
+        this.hasMany(models.UserDisease, { foreignKey: 'user_id', as: 'userDiseases' });
+        this.hasMany(models.MedicationPlan, { foreignKey: 'user_id', as: 'medicationPlans' });
     }
 }
 
