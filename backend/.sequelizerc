@@ -1,0 +1,16 @@
+// .sequelizerc
+const path = require('path');
+
+module.exports = {
+  // Apuntamos a la config en src/config/database.js
+  'config': path.resolve('src', 'config', 'database.js'),
+
+  // Carpeta donde Sequelize CLI buscará y generará modelos
+  'models-path': path.resolve('src', 'models'),
+
+  // Carpeta para migraciones
+  'migrations-path': path.resolve('src', 'database', 'migrations'),
+
+  // Carpeta para seeders
+  'seeders-path': path.resolve('src', 'database', 'seeders')
+};
