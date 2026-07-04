@@ -1,8 +1,36 @@
 const express = require('express');
 const router = express.Router();
-const { login } = require('../controllers/auth.controller');
+const { login, register } = require('../controllers/auth.controller');
 const validateRequest = require('../utils/validateRequest');
 const loginSchema = require('../validations/auth.schema.js');
+const { registerSchema } = require('../validations/auth.schema.js');
+
+/**
+ * @swagger
+ * tags:
+ *   name: Authentication
+ *   description: Login and register endpoints
+ */
+
+/**
+ * @swagger
+ * /auth/register:
+ *   post:
+ *     summary: Register a new client user (public, no auth required, role is always 'user')
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: "#/components/schemas/Register"
+ *     responses:
+ *       201:
+ *         description: User registered successfully.
+ *       400:
+ *         description: Email already exists or validation error.
+ */
+router.post('/register', validateRequest(registerSchema), register);
 
 /**
  * @swagger

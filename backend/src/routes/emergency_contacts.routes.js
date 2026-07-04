@@ -6,7 +6,7 @@ const {
   update,
   destroy
 } = require('../controllers/emergency_contact.controller');
-const {checkAuth} = require('../middlewares/checkAuth');
+const {checkAuthAny} = require('../middlewares/checkAuth');
 const validateRequest = require('../utils/validateRequest');
 const {
   readEmergencyContactRequestSchema,
@@ -28,7 +28,7 @@ const router = express.Router();
  * @swagger
  * /emergency_contacts:
  *   get:
- *     summary: Retrieve all emergency contacts
+ *     summary: Retrieve all emergency contacts (admin sees all, client sees only their own)
  *     tags: [EmergencyContacts]
  *     security:
  *       - bearerAuth: []
@@ -42,13 +42,13 @@ const router = express.Router();
  *               items:
  *                 $ref: "#/components/schemas/EmergencyContact"
  */
-router.get('/', checkAuth('admin'), getAll);
+router.get('/', checkAuthAny(), getAll);
 
 /**
  * @swagger
  * /emergency_contacts:
  *   post:
- *     summary: Create a new emergency contact
+ *     summary: Create a new emergency contact (user_id is taken from token)
  *     tags: [EmergencyContacts]
  *     security:
  *       - bearerAuth: []
@@ -57,7 +57,21 @@ router.get('/', checkAuth('admin'), getAll);
  *       content:
  *         application/json:
  *           schema:
- *             $ref: "#/components/schemas/EmergencyContact"
+ *             type: object
+ *             required:
+ *               - full_name
+ *               - cellphone
+ *               - relationship
+ *             properties:
+ *               full_name:
+ *                 type: string
+ *                 example: "Juan Pérez"
+ *               cellphone:
+ *                 type: string
+ *                 example: "1234567890"
+ *               relationship:
+ *                 type: string
+ *                 example: "Father"
  *     responses:
  *       201:
  *         description: Emergency contact created successfully.
@@ -72,13 +86,13 @@ router.get('/', checkAuth('admin'), getAll);
  *             schema:
  *               $ref: "#/components/schemas/ErrorResponse"
  */
-router.post('/', checkAuth('admin'), validateRequest(createEmergencyContactRequestSchema), save);
+router.post('/', checkAuthAny(), validateRequest(createEmergencyContactRequestSchema), save);
 
 /**
  * @swagger
  * /emergency_contacts/{id}:
  *   get:
- *     summary: Retrieve an emergency contact by ID
+ *     summary: Retrieve an emergency contact by ID (admin can see all, client only their own)
  *     tags: [EmergencyContacts]
  *     security:
  *       - bearerAuth: []
@@ -96,6 +110,8 @@ router.post('/', checkAuth('admin'), validateRequest(createEmergencyContactReque
  *           application/json:
  *             schema:
  *               $ref: "#/components/schemas/EmergencyContact"
+ *       403:
+ *         description: Unauthorized - contact belongs to another user.
  *       404:
  *         description: Emergency contact not found.
  *         content:
@@ -103,13 +119,13 @@ router.post('/', checkAuth('admin'), validateRequest(createEmergencyContactReque
  *             schema:
  *               $ref: "#/components/schemas/ErrorResponse"
  */
-router.get('/:id', checkAuth('admin'), validateRequest(readEmergencyContactRequestSchema), getById);
+router.get('/:id', checkAuthAny(), validateRequest(readEmergencyContactRequestSchema), getById);
 
 /**
  * @swagger
  * /emergency_contacts/{id}:
  *   put:
- *     summary: Update an emergency contact by ID
+ *     summary: Update an emergency contact (user_id cannot be changed, client only their own)
  *     tags: [EmergencyContacts]
  *     security:
  *       - bearerAuth: []
@@ -125,7 +141,17 @@ router.get('/:id', checkAuth('admin'), validateRequest(readEmergencyContactReque
  *       content:
  *         application/json:
  *           schema:
- *             $ref: "#/components/schemas/EmergencyContact"
+ *             type: object
+ *             properties:
+ *               full_name:
+ *                 type: string
+ *                 example: "Juan Pérez"
+ *               cellphone:
+ *                 type: string
+ *                 example: "1234567890"
+ *               relationship:
+ *                 type: string
+ *                 example: "Father"
  *     responses:
  *       200:
  *         description: Emergency contact updated successfully.
@@ -133,6 +159,8 @@ router.get('/:id', checkAuth('admin'), validateRequest(readEmergencyContactReque
  *           application/json:
  *             schema:
  *               $ref: "#/components/schemas/EmergencyContact"
+ *       403:
+ *         description: Unauthorized - contact belongs to another user.
  *       404:
  *         description: Emergency contact not found.
  *         content:
@@ -140,13 +168,13 @@ router.get('/:id', checkAuth('admin'), validateRequest(readEmergencyContactReque
  *             schema:
  *               $ref: "#/components/schemas/ErrorResponse"
  */
-router.put('/:id', checkAuth('admin'), validateRequest(updateEmergencyContactRequestSchema), update);
+router.put('/:id', checkAuthAny(), validateRequest(updateEmergencyContactRequestSchema), update);
 
 /**
  * @swagger
  * /emergency_contacts/{id}:
  *   delete:
- *     summary: Delete an emergency contact by ID
+ *     summary: Delete an emergency contact (admin can delete any, client only their own)
  *     tags: [EmergencyContacts]
  *     security:
  *       - bearerAuth: []
@@ -168,6 +196,8 @@ router.put('/:id', checkAuth('admin'), validateRequest(updateEmergencyContactReq
  *                 message:
  *                   type: string
  *                   example: "Emergency contact deleted successfully"
+ *       403:
+ *         description: Unauthorized - contact belongs to another user.
  *       404:
  *         description: Emergency contact not found.
  *         content:
@@ -175,6 +205,6 @@ router.put('/:id', checkAuth('admin'), validateRequest(updateEmergencyContactReq
  *             schema:
  *               $ref: "#/components/schemas/ErrorResponse"
  */
-router.delete('/:id', checkAuth('admin'), validateRequest(deleteEmergencyContactRequestSchema), destroy);
+router.delete('/:id', checkAuthAny(), validateRequest(deleteEmergencyContactRequestSchema), destroy);
 
 module.exports = router;

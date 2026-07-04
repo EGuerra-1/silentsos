@@ -1,15 +1,31 @@
 const { User } = require('../models');
+const CrudService = require('../services/crudService');
 const catchErrors = require('../utils/tryCatch');
 const ApiResponse = require('../utils/apiResponse');
-const { generateToken } = require('../auth'); // Module with functions: asignarToken, verificarToken
-const { comparePassword } = require('../utils/password'); // Function to compare plain and hashed passwords
+const { generateToken } = require('../auth');
+const { comparePassword, encryptPassword } = require('../utils/password');
 
 class AuthController {
-    /**
-     * Login endpoint.
-     * Expects a JSON body with "email" and "password".
-     * Returns a JWT token along with basic user information if the credentials are valid.
-     */
+    static userService = new CrudService(User);
+
+    // POST /auth/register: público, solo crea usuarios con rol 'user'
+    static registerRoute = '/auth/register';
+    static register = catchErrors(async (req, res) => {
+        const isUnique = await this.userService.isUnique('email', req.body.email);
+        if (!isUnique) {
+            return ApiResponse.error(res, {
+                error: 'Email already exists',
+                route: this.registerRoute,
+                status: 400,
+            });
+        }
+        req.body.password = await encryptPassword(req.body.password);
+        req.body.rol = 'user';
+        const dataCreate = await this.userService.create(req.body);
+        return ApiResponse.success(res, { data: dataCreate, route: this.registerRoute, message: 'User registered' });
+    });
+
+    // POST /auth/login: público, retorna token JWT
     static routes = '/auth/login';
     static login = catchErrors(async (req, res) => {
         const { email, password } = req.body;

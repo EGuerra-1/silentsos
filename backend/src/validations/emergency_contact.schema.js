@@ -7,7 +7,6 @@ const { z } = require('zod');
  *     EmergencyContact:
  *       type: object
  *       required:
- *         - user_id
  *         - full_name
  *         - cellphone
  *         - relationship
@@ -20,7 +19,7 @@ const { z } = require('zod');
  *         user_id:
  *           type: string
  *           format: uuid
- *           description: ID of the user who owns this emergency contact.
+ *           description: ID of the user (taken from token, not required in request).
  *           example: "550e8400-e29b-41d4-a716-446655440001"
  *         full_name:
  *           type: string
@@ -67,12 +66,12 @@ const readEmergencyContactRequestSchema = z.object({
 });
 
 const createEmergencyContactRequestSchema = z.object({
-    body: emergencyContactSchema.omit({ id: true }),
+    body: emergencyContactSchema.omit({ id: true, user_id: true }),
 });
 
 const updateEmergencyContactRequestSchema = z.object({
     params,
-    body: emergencyContactSchema.omit({ id: true }),
+    body: emergencyContactSchema.omit({ id: true, user_id: true }),
 });
 
 const deleteEmergencyContactRequestSchema = z.object({

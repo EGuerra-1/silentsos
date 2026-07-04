@@ -103,7 +103,7 @@ const createUserRequestSchema = z.object({
 
 const updateUserRequestSchema = z.object({
     params,
-    body: userSchema.omit({ id: true }),
+    body: userSchema.omit({ id: true, rol: true }),
 });
 
 const deleteUserRequestSchema = z.object({

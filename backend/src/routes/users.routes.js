@@ -6,14 +6,14 @@ const {
   update,
   destroy
 } = require('../controllers/user.controller');
-const {checkAuth} = require('../middlewares/checkAuth'); // Import your auth middleware
+const {checkAuth, checkAuthAny} = require('../middlewares/checkAuth');
 const validateRequest = require('../utils/validateRequest');
 const {
   readUserRequestSchema,
   createUserRequestSchema,
   updateUserRequestSchema,
   deleteUserRequestSchema,
-} = require('../validations/user.schema'); // Ensure the file name matches
+} = require('../validations/user.schema');
 
 const router = express.Router();
 
@@ -28,8 +28,8 @@ const router = express.Router();
  * @swagger
  * /users:
  *   get:
- *     summary: Retrieve all users
- *     tags: [Users] 
+ *     summary: Retrieve all users (admin only)
+ *     tags: [Users]
  *     security:
  *       - bearerAuth: []
  *     responses:
@@ -42,42 +42,58 @@ const router = express.Router();
  *               items:
  *                 $ref: "#/components/schemas/User"
  */
-router.get('/', getAll);
+router.get('/', checkAuth('admin'), getAll);
 
 /**
  * @swagger
  * /users:
  *   post:
- *     summary: Create a new user
- *     tags: [Users] 
+ *     summary: Create a new admin user (admin only, role is always 'admin')
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             $ref: "#/components/schemas/User"
+ *             type: object
+ *             required:
+ *               - full_name
+ *               - email
+ *               - cellphone
+ *               - password
+ *             properties:
+ *               full_name:
+ *                 type: string
+ *                 example: "Admin User"
+ *               email:
+ *                 type: string
+ *                 example: "admin@gmail.com"
+ *               cellphone:
+ *                 type: string
+ *                 example: "1234567890"
+ *               password:
+ *                 type: string
+ *                 example: "Clave123!"
  *     responses:
  *       201:
- *         description: User created successfully.
- *         content:
- *           application/json:
- *             schema:
- *               $ref: "#/components/schemas/User"
+ *         description: Admin user created successfully.
  *       400:
- *         description: Error creating user.
+ *         description: Email already exists or validation error.
  *         content:
  *           application/json:
  *             schema:
  *               $ref: "#/components/schemas/ErrorResponse"
  */
-router.post('/', validateRequest(createUserRequestSchema), save);
+router.post('/', checkAuth('admin'), validateRequest(createUserRequestSchema), save);
 
 /**
  * @swagger
  * /users/{id}:
  *   get:
- *     summary: Retrieve a user by ID
- *     tags: [Users] 
+ *     summary: Retrieve a user by ID (admin can see all, client only their own profile)
+ *     tags: [Users]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -94,6 +110,8 @@ router.post('/', validateRequest(createUserRequestSchema), save);
  *           application/json:
  *             schema:
  *               $ref: "#/components/schemas/User"
+ *       403:
+ *         description: Unauthorized - cannot view other users.
  *       404:
  *         description: User not found.
  *         content:
@@ -101,14 +119,14 @@ router.post('/', validateRequest(createUserRequestSchema), save);
  *             schema:
  *               $ref: "#/components/schemas/ErrorResponse"
  */
-router.get('/:id', validateRequest(readUserRequestSchema), getById);
+router.get('/:id', checkAuthAny(), validateRequest(readUserRequestSchema), getById);
 
 /**
  * @swagger
  * /users/{id}:
  *   put:
- *     summary: Update a user by ID
- *     tags: [Users] 
+ *     summary: Update a user (admin can update anyone, client only their own, cannot change role)
+ *     tags: [Users]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -123,7 +141,20 @@ router.get('/:id', validateRequest(readUserRequestSchema), getById);
  *       content:
  *         application/json:
  *           schema:
- *             $ref: "#/components/schemas/User"
+ *             type: object
+ *             properties:
+ *               full_name:
+ *                 type: string
+ *                 example: "Daniel Morales"
+ *               email:
+ *                 type: string
+ *                 example: "ale@gmail.com"
+ *               cellphone:
+ *                 type: string
+ *                 example: "1234567890"
+ *               password:
+ *                 type: string
+ *                 example: "Clave123!"
  *     responses:
  *       200:
  *         description: User updated successfully.
@@ -131,6 +162,8 @@ router.get('/:id', validateRequest(readUserRequestSchema), getById);
  *           application/json:
  *             schema:
  *               $ref: "#/components/schemas/User"
+ *       403:
+ *         description: Unauthorized - cannot update other users.
  *       404:
  *         description: User not found.
  *         content:
@@ -138,14 +171,14 @@ router.get('/:id', validateRequest(readUserRequestSchema), getById);
  *             schema:
  *               $ref: "#/components/schemas/ErrorResponse"
  */
-router.put('/:id', validateRequest(updateUserRequestSchema), update);
+router.put('/:id', checkAuthAny(), validateRequest(updateUserRequestSchema), update);
 
 /**
  * @swagger
  * /users/{id}:
  *   delete:
- *     summary: Delete a user by ID
- *     tags: [Users] 
+ *     summary: Delete a user (admin only)
+ *     tags: [Users]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -173,6 +206,6 @@ router.put('/:id', validateRequest(updateUserRequestSchema), update);
  *             schema:
  *               $ref: "#/components/schemas/ErrorResponse"
  */
-router.delete('/:id', validateRequest(deleteUserRequestSchema), destroy);
+router.delete('/:id', checkAuth('admin'), validateRequest(deleteUserRequestSchema), destroy);
 
 module.exports = router;
