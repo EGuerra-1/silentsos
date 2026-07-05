@@ -1,3 +1,4 @@
+const { Op } = require('sequelize');
 const { Emergency, Triage, CallHistory, User, EmergencyContact } = require('../models');
 const MedicalService = require('./medical.service');
 const OpenAIService = require('./openai.service');
@@ -28,7 +29,27 @@ class EmergencyService {
 
     // --- CREACIÓN ---
 
+    // Evita doble disparo si el usuario presiona SOS varias veces en pocos segundos:
+    // reutiliza una emergencia activa (no COMPLETED/FAILED) creada en los últimos 60s.
+    static DUPLICATE_GUARD_WINDOW_MS = 60 * 1000;
+
+    static async _findRecentActiveEmergency(userId) {
+        return Emergency.findOne({
+            where: {
+                user_id: userId,
+                status: { [Op.notIn]: ['COMPLETED', 'FAILED'] },
+                created_at: { [Op.gte]: new Date(Date.now() - this.DUPLICATE_GUARD_WINDOW_MS) },
+            },
+            order: [['created_at', 'DESC']],
+        });
+    }
+
     static async createUrgency(userId, payload) {
+        const existing = await this._findRecentActiveEmergency(userId);
+        if (existing) {
+            return existing;
+        }
+
         const emergency = await Emergency.create({
             user_id: userId,
             type: payload.type,
@@ -51,6 +72,11 @@ class EmergencyService {
     }
 
     static async createContextual(userId, payload) {
+        const existing = await this._findRecentActiveEmergency(userId);
+        if (existing) {
+            return existing;
+        }
+
         // type se setea a 'general' como placeholder; Vision lo actualizará tras analizar.
         const emergency = await Emergency.create({
             user_id: userId,
@@ -189,37 +215,18 @@ class EmergencyService {
         const audioUrl = `${integrations.publicUrl.value()}${stored.publicPath}`;
         await emergency.update({ status: 'AUDIO_GENERATED', audio_url: audioUrl });
 
-        const callHistory = await CallHistory.create({
-            emergency_id: emergency.id,
-            mode: emergency.call_mode,
-            status: 'queued',
-            details: {
-                triage_id: savedTriage.id,
-                sms: {
-                    nums: this.extractContactNumbers(contacts),
-                    description,
-                },
-            },
-        });
+        const nums = this.extractContactNumbers(contacts);
 
-        const twimlUrl = `${integrations.publicUrl.value()}/api/twilio/twiml/${emergency.id}`;
-        const statusCallbackUrl = `${integrations.publicUrl.value()}/api/twilio/status/${emergency.id}`;
-
-        const call = await TwilioService.makeCall({ twimlUrl, statusCallbackUrl });
-
-        await callHistory.update({
-            twilio_call_sid: call.sid,
-            status: call.status || 'initiated',
-            started_at: new Date(),
-            details: {
-                ...(callHistory.details || {}),
-                call: { sid: call.sid, to: call.to, from: call.from },
-            },
+        const callHistory = await this._attemptCall({
+            emergency,
+            triageId: savedTriage.id,
+            nums,
+            description,
+            attempt: 1,
         });
 
         await emergency.update({ status: 'CALL_STARTED' });
 
-        const nums = this.extractContactNumbers(contacts);
         if (nums.length > 0) {
             try {
                 const n8nResponse = await N8nService.sendEmergencySmsPayload({ description, nums });
@@ -247,6 +254,72 @@ class EmergencyService {
                 });
             }
         }
+    }
+
+    // Crea el registro de intento y dispara la llamada de Twilio. Reutilizado por el
+    // intento inicial y por los reintentos automáticos en caso de no-answer/busy/failed.
+    static async _attemptCall({ emergency, triageId, nums, description, attempt }) {
+        const callHistory = await CallHistory.create({
+            emergency_id: emergency.id,
+            mode: emergency.call_mode,
+            status: 'queued',
+            details: {
+                triage_id: triageId,
+                attempt,
+                sms: { nums, description },
+            },
+        });
+
+        const twimlUrl = `${integrations.publicUrl.value()}/api/twilio/twiml/${emergency.id}`;
+        const statusCallbackUrl = `${integrations.publicUrl.value()}/api/twilio/status/${emergency.id}`;
+
+        const call = await TwilioService.makeCall({ twimlUrl, statusCallbackUrl });
+
+        await callHistory.update({
+            twilio_call_sid: call.sid,
+            status: call.status || 'initiated',
+            started_at: new Date(),
+            details: {
+                ...(callHistory.details || {}),
+                call: { sid: call.sid, to: call.to, from: call.from },
+            },
+        });
+
+        return callHistory;
+    }
+
+    // Reintento automático: solo procede si no hay ya un intento en curso (anti-duplicado)
+    // y la emergencia no llegó a un estado terminal por otra vía mientras esperaba el delay.
+    static async _retryCall(emergencyId, attempt) {
+        const emergency = await Emergency.findByPk(emergencyId);
+        if (!emergency || ['COMPLETED', 'FAILED'].includes(emergency.status)) {
+            return;
+        }
+
+        const nonTerminalStatuses = ['queued', 'initiated', 'ringing', 'in-progress', 'answered'];
+        const activeCall = await CallHistory.findOne({
+            where: { emergency_id: emergencyId, status: { [Op.in]: nonTerminalStatuses } },
+            order: [['created_at', 'DESC']],
+        });
+        if (activeCall) {
+            return;
+        }
+
+        const lastCallHistory = await CallHistory.findOne({
+            where: { emergency_id: emergencyId },
+            order: [['created_at', 'DESC']],
+        });
+        const smsDetails = lastCallHistory?.details?.sms || {};
+
+        await this._attemptCall({
+            emergency,
+            triageId: lastCallHistory?.details?.triage_id || null,
+            nums: smsDetails.nums || [],
+            description: smsDetails.description || emergency.description,
+            attempt,
+        });
+
+        await emergency.update({ status: 'CALL_STARTED' });
     }
 
     static async _markFailed(emergencyId, callMode, errorMessage) {
@@ -295,6 +368,9 @@ class EmergencyService {
         }
 
         const terminalStatuses = ['completed', 'busy', 'failed', 'no-answer', 'canceled'];
+        const retryableStatuses = ['no-answer', 'busy', 'failed'];
+        const attempt = details.attempt || 1;
+        const maxAttempts = integrations.twilio.maxCallAttempts();
 
         await callHistory.update({
             status: callStatus,
@@ -303,9 +379,19 @@ class EmergencyService {
         });
 
         if (terminalStatuses.includes(callStatus)) {
-            await emergency.update({
-                status: callStatus === 'completed' ? 'COMPLETED' : 'FAILED',
-            });
+            if (callStatus === 'completed') {
+                await emergency.update({ status: 'COMPLETED' });
+            } else if (retryableStatuses.includes(callStatus) && attempt < maxAttempts) {
+                // No se contestó o falló: reintenta tras un breve delay en vez de marcar FAILED.
+                const retryDelayMs = integrations.twilio.callRetryDelayMs();
+                setTimeout(() => {
+                    this._retryCall(emergencyId, attempt + 1).catch((err) =>
+                        console.error('Fallo al reintentar llamada:', err.message)
+                    );
+                }, retryDelayMs);
+            } else {
+                await emergency.update({ status: 'FAILED' });
+            }
         }
     }
 
@@ -333,51 +419,53 @@ class EmergencyService {
 
     // --- BUILDERS DE DESCRIPCIÓN ---
 
-    static buildUrgencyDescription({ emergency, medicalSummary }) {
-        const user = emergency.user;
-        const name = user?.full_name || 'usuario SilentSOS';
+    // Formatea coordenadas con 5 decimales (~1 m) para que el TTS las lea claras.
+    static buildCoordinatesText(emergency) {
+        if (emergency.latitude == null || emergency.longitude == null) {
+            return `Coordenadas: NA.`;
+        }
+        const lat = Number(emergency.latitude).toFixed(5);
+        const lng = Number(emergency.longitude).toFixed(5);
+        return `Coordenadas: latitud ${lat}, longitud ${lng}.`;
+    }
 
-        // Texto en español para que ElevenLabs lo lea al operador del 911.
+    static buildUrgencyDescription({ emergency, medicalSummary }) {
+        const name = emergency.user?.full_name || 'NA';
+        const isMedical = emergency.type === 'medical';
+
+        // Speech corto y directo para el operador del 911 (sin marca del proyecto).
         const parts = [
-            `Alerta de emergencia SilentSOS.`,
-            `El reportante se llama ${name} y es una persona con discapacidad auditiva.`,
-            `No puede escuchar al operador ni responder verbalmente.`,
-            `Tipo de emergencia: ${emergency.type === 'medical' ? 'médica' : 'general'}.`,
-            emergency.address ? `Ubicación: ${emergency.address}.` : null,
-            emergency.latitude && emergency.longitude
-                ? `Coordenadas GPS: latitud ${emergency.latitude}, longitud ${emergency.longitude}.`
-                : null,
-            medicalSummary ? `Antecedentes médicos: ${medicalSummary}` : null,
-            `Por favor envíe ayuda urgente.`,
-            `Fin del mensaje de SilentSOS.`,
+            `Llamada de emergencia.`,
+            `La persona que reporta se llama ${name} y tiene discapacidad auditiva; no puede escuchar ni responder por voz.`,
+            `Tipo de emergencia: ${isMedical ? 'médica' : 'general'}.`,
+            `Ubicación: ${emergency.address || 'NA'}.`,
+            this.buildCoordinatesText(emergency),
+            isMedical && medicalSummary ? `Información médica. ${medicalSummary}` : null,
+            `Por favor envíe ayuda de inmediato.`,
         ].filter(Boolean);
 
         return parts.join(' ');
     }
 
     static buildContextualDescription({ emergency, triage, medicalSummary }) {
-        const user = emergency.user;
-        const name = user?.full_name || 'usuario SilentSOS';
-        const summary = triage.resumen || 'emergencia sin resumen de triage.';
+        const name = emergency.user?.full_name || 'NA';
+        const isMedical = emergency.type === 'medical';
+        const summary = triage.resumen || 'NA';
 
         const parts = [
-            `Alerta de emergencia SilentSOS.`,
-            `El reportante se llama ${name} y es una persona con discapacidad auditiva.`,
-            `No puede escuchar al operador ni responder verbalmente.`,
-            `Tipo de emergencia: ${emergency.type === 'medical' ? 'médica' : 'general'}.`,
-            emergency.address ? `Ubicación: ${emergency.address}.` : null,
-            emergency.latitude && emergency.longitude
-                ? `Coordenadas GPS: latitud ${emergency.latitude}, longitud ${emergency.longitude}.`
-                : null,
-            emergency.context_text ? `Descripción del usuario: ${emergency.context_text}.` : null,
-            `Resumen del triage visual: ${summary}`,
-            medicalSummary ? `Antecedentes médicos: ${medicalSummary}` : null,
-            // Instrucción adicional si el operador puede comunicarse con el usuario.
+            `Llamada de emergencia.`,
+            `La persona que reporta se llama ${name} y tiene discapacidad auditiva; no puede escuchar ni responder por voz.`,
+            `Tipo de emergencia: ${isMedical ? 'médica' : 'general'}.`,
+            `Ubicación: ${emergency.address || 'NA'}.`,
+            this.buildCoordinatesText(emergency),
+            emergency.context_text ? `Contexto del usuario: ${emergency.context_text}.` : null,
+            `Situación observada: ${summary}`,
+            medicalSummary ? `Información médica. ${medicalSummary}` : null,
+            // Se conserva para reactivar el modo interactivo más adelante (hoy no se usa).
             emergency.call_mode === 'interactive'
-                ? `El operador puede hacer preguntas de sí o no al usuario. El usuario responderá mediante gestos o botones en su dispositivo móvil.`
+                ? `El operador puede hacer preguntas de sí o no; el usuario responde con gestos en su teléfono.`
                 : null,
-            `Por favor envíe ayuda urgente.`,
-            `Fin del mensaje de SilentSOS.`,
+            `Por favor envíe ayuda de inmediato.`,
         ].filter(Boolean);
 
         return parts.join(' ');
@@ -390,10 +478,12 @@ class EmergencyService {
         return requiresAmbulance || ['grave', 'critica', 'critical', 'severe'].includes(severity);
     }
 
+    // En emergencias médicas siempre se incluye este bloque; usa "NA" cuando falta el dato.
     static async buildMedicalSummary(userId) {
         const diseases = await this.medicalService.getUserDiseases(userId);
         const medications = await this.medicalService.getMedications(userId);
         const pending = await this.medicalService.getPendingMedicationsToday(userId);
+        const consumedToday = await this.medicalService.getConsumedTodayCount(userId);
 
         const diseaseNames = diseases.map((d) => d?.diseaseCatalog?.name).filter(Boolean);
         const medicationNames = medications
@@ -403,13 +493,14 @@ class EmergencyService {
             .filter(Boolean);
         const pendingCount = pending?.total_pending || 0;
 
-        const lines = [
-            diseaseNames.length > 0 ? `Padecimientos crónicos: ${diseaseNames.join(', ')}.` : null,
-            medicationNames.length > 0 ? `Medicamentos actuales: ${medicationNames.join(', ')}.` : null,
-            pendingCount > 0 ? `Tiene ${pendingCount} dosis pendientes hoy.` : null,
-        ].filter(Boolean);
+        const parts = [
+            `Padecimientos: ${diseaseNames.length > 0 ? diseaseNames.join(', ') : 'NA'}.`,
+            `Medicamentos: ${medicationNames.length > 0 ? medicationNames.join(', ') : 'NA'}.`,
+            `Dosis tomadas hoy: ${consumedToday > 0 ? consumedToday : 'NA'}.`,
+            `Dosis pendientes hoy: ${pendingCount > 0 ? pendingCount : 'ninguna'}.`,
+        ];
 
-        return lines.length > 0 ? lines.join(' ') : null;
+        return parts.join(' ');
     }
 
     static extractContactNumbers(contacts = []) {

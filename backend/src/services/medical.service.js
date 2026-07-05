@@ -6,8 +6,11 @@ const {
   MedicationPlan,
   MedicationVersion,
   MedicationSchedule,
-  MedicationConsumptionHistory
+  MedicationConsumptionHistory,
+  EmergencyContact,
+  User
 } = require('../models');
+const N8nService = require('./n8n.service');
 
 class MedicalService {
   static normalizeTimeKey(value) {
@@ -273,13 +276,70 @@ class MedicalService {
       throw new Error('Current medication version not found');
     }
 
-    return MedicationConsumptionHistory.create({
+    const consumption = await MedicationConsumptionHistory.create({
       medication_plan_id: plan.id,
       medication_version_id: currentVersion.id,
       scheduled_time: payload.scheduled_time || null,
       consumed_at: payload.consumed_at || new Date(),
       status: payload.status || 'consumed',
       observations: payload.observations || null
+    });
+
+    // Solo un consumo efectivo avisa a los contactos; corre en background y no bloquea.
+    if ((payload.status || 'consumed') === 'consumed') {
+      setImmediate(() =>
+        this.notifyMedicationTaken(userId, currentVersion, consumption).catch((err) =>
+          console.error('Fallo al notificar consumo por n8n:', err.message)
+        )
+      );
+    }
+
+    return consumption;
+  }
+
+  // Avisa a los contactos de emergencia (vía n8n -> Zavu) que el usuario tomó su medicamento.
+  async notifyMedicationTaken(userId, version, consumption) {
+    const contacts = await EmergencyContact.findAll({ where: { user_id: userId } });
+    const nums = Array.from(
+      new Set(contacts.map((c) => String(c.cellphone || '').trim()).filter(Boolean))
+    );
+    if (nums.length === 0) {
+      return;
+    }
+
+    const user = await User.findByPk(userId);
+    const name = user?.full_name || 'El usuario';
+    const dose = `${version.dose || ''}${version.unit ? ` ${version.unit}` : ''}`.trim();
+    const time = new Date(consumption.consumed_at).toLocaleTimeString('es-SV', {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    const message = `${name} tomó su medicamento: ${version.name}${dose ? ` (${dose})` : ''} a las ${time}.`;
+
+    await N8nService.sendMedicationTakenPayload({ message, nums });
+  }
+
+  // Cuenta las dosis efectivamente tomadas hoy por el usuario (para el speech de emergencia).
+  async getConsumedTodayCount(userId) {
+    const now = new Date();
+    const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const startOfDay = new Date(`${localDate}T00:00:00`);
+    const endOfDay = new Date(`${localDate}T23:59:59.999`);
+
+    return MedicationConsumptionHistory.count({
+      where: {
+        consumed_at: { [Op.gte]: startOfDay, [Op.lte]: endOfDay },
+        status: 'consumed'
+      },
+      include: [
+        {
+          model: MedicationPlan,
+          as: 'plan',
+          where: { user_id: userId },
+          attributes: []
+        }
+      ]
     });
   }
 
