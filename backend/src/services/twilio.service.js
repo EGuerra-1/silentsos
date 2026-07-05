@@ -6,12 +6,11 @@ class TwilioService {
         if (!integrations.twilio.configured()) {
             throw new Error('Twilio no esta configurado. Revisa TWILIO_* en .env');
         }
-
         return twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
     }
 
     static buildPlayTwiml(audioUrl) {
-        // TwiML básico: reproduce audio pregrabado y cierra mensaje.
+        // TwiML básico: reproduce audio pregrabado y cierra la llamada.
         const response = new twilio.twiml.VoiceResponse();
         response.play(audioUrl);
         response.pause({ length: 1 });
@@ -20,30 +19,29 @@ class TwilioService {
     }
 
     static buildStreamTwiml({ audioUrl, streamUrl }) {
-        // TwiML para fase 2: combina reproducción inicial + stream bidireccional.
+        // TwiML para modo interactivo: reproduce audio inicial y abre canal bidireccional.
         const response = new twilio.twiml.VoiceResponse();
 
         if (audioUrl) {
             response.play(audioUrl);
         }
 
-        if (streamUrl) {
-            const connect = response.connect();
-            connect.stream({ url: streamUrl });
-        }
+        // <Connect><Stream> mantiene la llamada abierta y envía audio del operador
+        // a nuestro WebSocket para transcripción con ElevenLabs STT.
+        const connect = response.connect();
+        connect.stream({ url: streamUrl });
 
         return response.toString();
     }
 
     static async makeCall({ to, twimlUrl, statusCallbackUrl }) {
-        // Inicia llamada saliente hacia número objetivo o emergencia por defecto.
+        // Inicia llamada saliente siempre al número de emergencia configurado.
         const client = this.getClient();
         const destination = to || integrations.twilio.emergencyNumber();
 
         if (!destination) {
-            throw new Error('No hay numero destino. Configura EMERGENCY_PHONE_NUMBER');
+            throw new Error('No hay numero destino. Configura EMERGENCY_PHONE_NUMBER en .env');
         }
-
         if (!twimlUrl) {
             throw new Error('twimlUrl es requerido para iniciar la llamada');
         }
@@ -55,16 +53,11 @@ class TwilioService {
             method: 'GET',
             statusCallback: statusCallbackUrl,
             statusCallbackMethod: 'POST',
-            // Incluye "in-progress" para soportar el reintento de SMS hacia n8n.
+            // Incluye "in-progress" para soportar reintento de WhatsApp en n8n.
             statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
         });
 
-        return {
-            sid: call.sid,
-            status: call.status,
-            to: call.to,
-            from: call.from,
-        };
+        return { sid: call.sid, status: call.status, to: call.to, from: call.from };
     }
 }
 

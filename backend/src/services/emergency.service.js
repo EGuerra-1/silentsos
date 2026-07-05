@@ -1,338 +1,423 @@
 const { Emergency, Triage, CallHistory, User, EmergencyContact } = require('../models');
 const MedicalService = require('./medical.service');
 const OpenAIService = require('./openai.service');
-const EmergencyOrchestrator = require('./emergency.orchestrator');
+const ElevenLabsService = require('./elevenlabs.service');
+const LocalStorageService = require('./local-storage.service');
 const TwilioService = require('./twilio.service');
+const TwilioStreamService = require('./twilio-stream.service');
 const N8nService = require('./n8n.service');
 const { integrations } = require('../config/integrations');
 
+// Map temporal en memoria: emergencyId → datos de imagen base64.
+// Se limpia automáticamente al terminar el procesamiento.
+const pendingImageData = new Map();
+
+const DISPLAY_STATUS = {
+    PENDING: 'Preparando emergencia...',
+    ANALYZING: 'Analizando situación...',
+    TRIAGE_GENERATED: 'Generando mensaje...',
+    AUDIO_GENERATED: 'Preparando audio...',
+    CALL_STARTED: 'Contactando emergencias...',
+    SMS_SENT: 'Notificando contactos...',
+    COMPLETED: 'Llamada finalizada',
+    FAILED: 'Error en la llamada',
+};
+
 class EmergencyService {
-  static medicalService = new MedicalService();
+    static medicalService = new MedicalService();
 
-  static async createEmergency(userId, payload) {
-    const emergency = await Emergency.create({
-      user_id: userId,
-      type: payload.type,
-      call_mode: payload.call_mode,
-      priority: payload.priority || null,
-      latitude: payload.latitude || null,
-      longitude: payload.longitude || null,
-      address: payload.address || null,
-      image_url: payload.image_url || null,
-      video_url: payload.video_url || null,
-      context_text: payload.context_text || null,
-      status: 'PENDING'
-    });
+    // --- CREACIÓN ---
 
-    // Se ejecuta en segundo plano para responder rápido al cliente móvil.
-    setImmediate(() => {
-      this.processEmergency(emergency.id).catch(async (error) => {
-        await Emergency.update(
-          { status: 'FAILED' },
-          { where: { id: emergency.id } }
+    static async createUrgency(userId, payload) {
+        const emergency = await Emergency.create({
+            user_id: userId,
+            type: payload.type,
+            call_mode: 'single_context',
+            priority: payload.priority || null,
+            latitude: payload.latitude,
+            longitude: payload.longitude,
+            address: payload.address || null,
+            status: 'PENDING',
+        });
+
+        // Procesamiento asíncrono: responde 202 de inmediato a Flutter.
+        setImmediate(() =>
+            this.processUrgency(emergency.id).catch((err) =>
+                this._markFailed(emergency.id, 'single_context', err.message)
+            )
         );
+
+        return emergency;
+    }
+
+    static async createContextual(userId, payload) {
+        // type se setea a 'general' como placeholder; Vision lo actualizará tras analizar.
+        const emergency = await Emergency.create({
+            user_id: userId,
+            type: 'general',
+            call_mode: payload.call_mode,
+            priority: null,
+            latitude: payload.latitude,
+            longitude: payload.longitude,
+            address: payload.address || null,
+            context_text: payload.context_text || null,
+            status: 'PENDING',
+        });
+
+        // Guarda los datos de imagen en memoria para el proceso en background.
+        // No se persisten en BD ni en disco.
+        if (payload.front_image_base64) {
+            pendingImageData.set(emergency.id, {
+                frontBase64: payload.front_image_base64,
+                frontMime:   payload.front_image_mime || 'image/jpeg',
+                backBase64:  payload.back_image_base64 || null,
+                backMime:    payload.back_image_mime || 'image/jpeg',
+            });
+        }
+
+        setImmediate(() =>
+            this.processContextual(emergency.id).catch((err) =>
+                this._markFailed(emergency.id, emergency.call_mode, err.message)
+            )
+        );
+
+        return emergency;
+    }
+
+    // --- PIPELINE URGENCIA (sin OpenAI, texto directo) ---
+
+    static async processUrgency(emergencyId) {
+        const emergency = await Emergency.findByPk(emergencyId, {
+            include: [{ model: User, as: 'user' }],
+        });
+        if (!emergency) throw new Error('Emergency not found');
+
+        const contacts = await EmergencyContact.findAll({ where: { user_id: emergency.user_id } });
+
+        await emergency.update({ status: 'ANALYZING' });
+
+        // Carga médica solo si tipo es medical (sin Vision).
+        const medicalSummary = emergency.type === 'medical'
+            ? await this.buildMedicalSummary(emergency.user_id)
+            : null;
+
+        const description = this.buildUrgencyDescription({ emergency, medicalSummary });
+
+        // En urgencia no hay triage de OpenAI; se guarda un triage de fuente "urgency".
+        const savedTriage = await Triage.create({
+            emergency_id: emergency.id,
+            level: emergency.type === 'medical' ? 'alto' : 'medio',
+            severity: emergency.type === 'medical' ? 'grave' : 'moderada',
+            injuries: [],
+            symptoms: [],
+            requires_ambulance: emergency.type === 'medical',
+            summary: description,
+            source: 'urgency',
+        });
+
+        await emergency.update({ status: 'TRIAGE_GENERATED', description });
+
+        await this._continueFlow({ emergency, description, savedTriage, contacts });
+    }
+
+    // --- PIPELINE CONTEXTUAL (con OpenAI Vision) ---
+
+    static async processContextual(emergencyId) {
+        const emergency = await Emergency.findByPk(emergencyId, {
+            include: [{ model: User, as: 'user' }],
+        });
+        if (!emergency) throw new Error('Emergency not found');
+
+        const contacts = await EmergencyContact.findAll({ where: { user_id: emergency.user_id } });
+
+        await emergency.update({ status: 'ANALYZING' });
+
+        // Recupera y limpia el buffer base64 del Map en memoria.
+        const imgData = pendingImageData.get(emergencyId);
+        pendingImageData.delete(emergencyId);
+
+        const triageData = await OpenAIService.analyzeEmergency({
+            frontImageBase64: imgData?.frontBase64 || null,
+            frontMime:        imgData?.frontMime || 'image/jpeg',
+            backImageBase64:  imgData?.backBase64 || null,
+            backMime:         imgData?.backMime || 'image/jpeg',
+            contextText:      emergency.context_text || '',
+        });
+
+        // Vision detecta el tipo; sobreescribe el placeholder 'general'.
+        const detectedType = triageData.tipo_emergencia === 'medical' ? 'medical' : 'general';
+        await emergency.update({ type: detectedType });
+        emergency.type = detectedType;
+
+        const medicalSummary = this.shouldIncludeMedicalContext(detectedType, triageData)
+            ? await this.buildMedicalSummary(emergency.user_id)
+            : null;
+
+        const description = this.buildContextualDescription({
+            emergency,
+            triage: triageData,
+            medicalSummary,
+        });
+
+        const savedTriage = await Triage.create({
+            emergency_id: emergency.id,
+            level: triageData.nivel || 'medio',
+            severity: triageData.gravedad || 'moderada',
+            injuries: triageData.lesiones || [],
+            symptoms: triageData.sintomas || [],
+            requires_ambulance: Boolean(triageData.requiere_ambulancia),
+            summary: triageData.resumen || description,
+            source: triageData.source || 'openai',
+        });
+
+        await emergency.update({ status: 'TRIAGE_GENERATED', description });
+
+        await this._continueFlow({ emergency, description, savedTriage, contacts });
+    }
+
+    // --- FLUJO COMPARTIDO (audio + Twilio + n8n) ---
+
+    static async _continueFlow({ emergency, description, savedTriage, contacts }) {
+        const audio = await ElevenLabsService.textToSpeech(description);
+        const stored = LocalStorageService.save({
+            buffer: audio.buffer,
+            folder: 'audio',
+            filename: `emergency-${emergency.id}.${audio.extension}`,
+            contentType: audio.contentType,
+        });
+
+        const audioUrl = `${integrations.publicUrl.value()}${stored.publicPath}`;
+        await emergency.update({ status: 'AUDIO_GENERATED', audio_url: audioUrl });
+
+        const callHistory = await CallHistory.create({
+            emergency_id: emergency.id,
+            mode: emergency.call_mode,
+            status: 'queued',
+            details: {
+                triage_id: savedTriage.id,
+                sms: {
+                    nums: this.extractContactNumbers(contacts),
+                    description,
+                },
+            },
+        });
+
+        const twimlUrl = `${integrations.publicUrl.value()}/api/twilio/twiml/${emergency.id}`;
+        const statusCallbackUrl = `${integrations.publicUrl.value()}/api/twilio/status/${emergency.id}`;
+
+        const call = await TwilioService.makeCall({ twimlUrl, statusCallbackUrl });
+
+        await callHistory.update({
+            twilio_call_sid: call.sid,
+            status: call.status || 'initiated',
+            started_at: new Date(),
+            details: {
+                ...(callHistory.details || {}),
+                call: { sid: call.sid, to: call.to, from: call.from },
+            },
+        });
+
+        await emergency.update({ status: 'CALL_STARTED' });
+
+        const nums = this.extractContactNumbers(contacts);
+        if (nums.length > 0) {
+            try {
+                const n8nResponse = await N8nService.sendEmergencySmsPayload({ description, nums });
+                await callHistory.update({
+                    details: {
+                        ...(callHistory.details || {}),
+                        sms: {
+                            ...(callHistory.details?.sms || {}),
+                            initial: { success: true, response: n8nResponse },
+                            retry_on_call_started: false,
+                        },
+                    },
+                });
+                await emergency.update({ status: 'SMS_SENT' });
+            } catch (error) {
+                await callHistory.update({
+                    details: {
+                        ...(callHistory.details || {}),
+                        sms: {
+                            ...(callHistory.details?.sms || {}),
+                            initial: { success: false, error: error.message },
+                            retry_on_call_started: true,
+                        },
+                    },
+                });
+            }
+        }
+    }
+
+    static async _markFailed(emergencyId, callMode, errorMessage) {
+        await Emergency.update({ status: 'FAILED' }, { where: { id: emergencyId } });
         await CallHistory.create({
-          emergency_id: emergency.id,
-          mode: emergency.call_mode,
-          status: 'failed_before_call',
-          details: {
-            error: error.message
-          }
+            emergency_id: emergencyId,
+            mode: callMode || 'single_context',
+            status: 'failed_before_call',
+            details: { error: errorMessage },
         });
-      });
-    });
-
-    return emergency;
-  }
-
-  static async processEmergency(emergencyId) {
-    const emergency = await Emergency.findByPk(emergencyId, {
-      include: [
-        { model: User, as: 'user' }
-      ]
-    });
-
-    if (!emergency) {
-      throw new Error('Emergency not found');
     }
-    const contacts = await EmergencyContact.findAll({
-      where: { user_id: emergency.user_id }
-    });
 
-    await emergency.update({ status: 'ANALYZING' });
+    // --- TWILIO CALLBACKS ---
 
-    const baseContext = this.buildBaseContext(emergency);
-    const triageData = await OpenAIService.analyzeEmergency({
-      imageUrl: emergency.image_url,
-      contextText: baseContext
-    });
+    static async handleTwilioStatusCallback(emergencyId, payload) {
+        const emergency = await Emergency.findByPk(emergencyId);
+        if (!emergency) return;
 
-    const includeMedicalContext = this.shouldIncludeMedicalContext(emergency.type, triageData);
-    const medicalSummary = includeMedicalContext
-      ? await this.buildMedicalSummary(emergency.user_id)
-      : null;
+        const callHistory = await CallHistory.findOne({
+            where: { emergency_id: emergencyId },
+            order: [['created_at', 'DESC']],
+        });
+        if (!callHistory) return;
 
-    const description = this.buildDescription({
-      emergency,
-      triage: triageData,
-      medicalSummary
-    });
+        const callStatus = payload.CallStatus || 'unknown';
+        const details = callHistory.details || {};
+        const smsDetails = details.sms || {};
 
-    const savedTriage = await Triage.create({
-      emergency_id: emergency.id,
-      level: triageData.nivel || 'medium',
-      severity: triageData.gravedad || 'moderate',
-      injuries: triageData.lesiones || [],
-      symptoms: triageData.sintomas || [],
-      requires_ambulance: Boolean(triageData.requiere_ambulancia),
-      summary: triageData.resumen || description,
-      source: triageData.source || 'openai'
-    });
+        const shouldRetrySms =
+            callStatus === 'in-progress' &&
+            smsDetails.retry_on_call_started === true &&
+            Array.isArray(smsDetails.nums) &&
+            smsDetails.nums.length > 0;
 
-    await emergency.update({
-      status: 'TRIAGE_GENERATED',
-      description
-    });
-
-    const audio = await EmergencyOrchestrator.generateEmergencyAudio(description);
-    const audioUrl = audio.url || `${integrations.publicUrl.value()}${audio.publicPath}`;
-
-    await emergency.update({
-      status: 'AUDIO_GENERATED',
-      audio_url: audioUrl
-    });
-
-    const callHistory = await CallHistory.create({
-      emergency_id: emergency.id,
-      mode: emergency.call_mode,
-      status: 'queued',
-      details: {
-        triage_id: savedTriage.id,
-        sms: {
-          nums: this.extractContactNumbers(contacts),
-          description
+        if (shouldRetrySms) {
+            try {
+                const retryResponse = await N8nService.sendEmergencySmsPayload({
+                    description: smsDetails.description,
+                    nums: smsDetails.nums,
+                });
+                details.sms = { ...smsDetails, retry: { success: true, response: retryResponse }, retry_on_call_started: false };
+                await emergency.update({ status: 'SMS_SENT' });
+            } catch (error) {
+                details.sms = { ...smsDetails, retry: { success: false, error: error.message }, retry_on_call_started: false };
+            }
         }
-      }
-    });
 
-    const twimlUrl = `${integrations.publicUrl.value()}/api/twilio/twiml/${emergency.id}`;
-    const statusCallbackUrl = `${integrations.publicUrl.value()}/api/twilio/status/${emergency.id}`;
-    const call = await TwilioService.makeCall({
-      twimlUrl,
-      statusCallbackUrl
-    });
+        const terminalStatuses = ['completed', 'busy', 'failed', 'no-answer', 'canceled'];
 
-    await callHistory.update({
-      twilio_call_sid: call.sid,
-      status: call.status || 'initiated',
-      started_at: new Date(),
-      details: {
-        ...(callHistory.details || {}),
-        call: {
-          sid: call.sid,
-          to: call.to,
-          from: call.from
-        }
-      }
-    });
-
-    await emergency.update({ status: 'CALL_STARTED' });
-
-    const nums = this.extractContactNumbers(contacts);
-    if (nums.length === 0) {
-      return;
-    }
-
-    try {
-      const n8nResponse = await N8nService.sendEmergencySmsPayload({ description, nums });
-      await callHistory.update({
-        details: {
-          ...(callHistory.details || {}),
-          sms: {
-            ...(callHistory.details?.sms || {}),
-            initial: { success: true, response: n8nResponse },
-            retry_on_call_started: false
-          }
-        }
-      });
-      await emergency.update({ status: 'SMS_SENT' });
-    } catch (error) {
-      await callHistory.update({
-        details: {
-          ...(callHistory.details || {}),
-          sms: {
-            ...(callHistory.details?.sms || {}),
-            initial: { success: false, error: error.message },
-            retry_on_call_started: true
-          }
-        }
-      });
-    }
-  }
-
-  static async handleTwilioStatusCallback(emergencyId, payload) {
-    const emergency = await Emergency.findByPk(emergencyId);
-    if (!emergency) {
-      return;
-    }
-
-    const callHistory = await CallHistory.findOne({
-      where: { emergency_id: emergencyId },
-      order: [['created_at', 'DESC']]
-    });
-
-    if (!callHistory) {
-      return;
-    }
-
-    const callStatus = payload.CallStatus || payload.CallStatusCallbackEvent || 'unknown';
-    const details = callHistory.details || {};
-    const smsDetails = details.sms || {};
-
-    const shouldRetrySms =
-      callStatus === 'in-progress' &&
-      smsDetails.retry_on_call_started === true &&
-      Array.isArray(smsDetails.nums) &&
-      smsDetails.nums.length > 0 &&
-      typeof smsDetails.description === 'string';
-
-    if (shouldRetrySms) {
-      try {
-        const retryResponse = await N8nService.sendEmergencySmsPayload({
-          description: smsDetails.description,
-          nums: smsDetails.nums
+        await callHistory.update({
+            status: callStatus,
+            ended_at: terminalStatuses.includes(callStatus) ? new Date() : callHistory.ended_at,
+            details: { ...details, twilio_callback: payload },
         });
 
-        details.sms = {
-          ...smsDetails,
-          retry: { success: true, response: retryResponse },
-          retry_on_call_started: false
-        };
-        await emergency.update({ status: 'SMS_SENT' });
-      } catch (error) {
-        details.sms = {
-          ...smsDetails,
-          retry: { success: false, error: error.message },
-          retry_on_call_started: false
-        };
-      }
+        if (terminalStatuses.includes(callStatus)) {
+            await emergency.update({
+                status: callStatus === 'completed' ? 'COMPLETED' : 'FAILED',
+            });
+        }
     }
 
-    await callHistory.update({
-      status: callStatus,
-      ended_at: ['completed', 'busy', 'failed', 'no-answer', 'canceled'].includes(callStatus)
-        ? new Date()
-        : callHistory.ended_at,
-      details: {
-        ...details,
-        twilio_callback: payload
-      }
-    });
+    // --- CONSULTA ---
 
-    if (['completed', 'busy', 'failed', 'no-answer', 'canceled'].includes(callStatus)) {
-      const finalStatus = callStatus === 'completed' ? 'COMPLETED' : 'FAILED';
-      await emergency.update({ status: finalStatus });
-    }
-  }
+    static async getEmergencyById(emergencyId, user) {
+        const emergency = await Emergency.findByPk(emergencyId, {
+            include: [
+                { model: Triage, as: 'triage' },
+                { model: CallHistory, as: 'callHistories' },
+            ],
+        });
 
-  static async getEmergencyById(emergencyId, user) {
-    const emergency = await Emergency.findByPk(emergencyId, {
-      include: [
-        { model: Triage, as: 'triage' },
-        { model: CallHistory, as: 'callHistories' }
-      ]
-    });
+        if (!emergency) return null;
 
-    if (!emergency) {
-      return null;
+        // Admin puede consultar cualquier emergencia; usuario solo las propias.
+        if (user.userType !== 'admin' && emergency.user_id !== user.id) {
+            return 'forbidden';
+        }
+
+        const plain = emergency.toJSON();
+        plain.display_status = DISPLAY_STATUS[plain.status] || plain.status;
+        return plain;
     }
 
-    // Admin puede consultar cualquiera; usuario normal solo sus propias emergencias.
-    if (user.userType !== 'admin' && emergency.user_id !== user.id) {
-      return 'forbidden';
+    // --- BUILDERS DE DESCRIPCIÓN ---
+
+    static buildUrgencyDescription({ emergency, medicalSummary }) {
+        const user = emergency.user;
+        const name = user?.full_name || 'usuario SilentSOS';
+
+        // Texto en español para que ElevenLabs lo lea al operador del 911.
+        const parts = [
+            `Alerta de emergencia SilentSOS.`,
+            `El reportante se llama ${name} y es una persona con discapacidad auditiva.`,
+            `No puede escuchar al operador ni responder verbalmente.`,
+            `Tipo de emergencia: ${emergency.type === 'medical' ? 'médica' : 'general'}.`,
+            emergency.address ? `Ubicación: ${emergency.address}.` : null,
+            emergency.latitude && emergency.longitude
+                ? `Coordenadas GPS: latitud ${emergency.latitude}, longitud ${emergency.longitude}.`
+                : null,
+            medicalSummary ? `Antecedentes médicos: ${medicalSummary}` : null,
+            `Por favor envíe ayuda urgente.`,
+            `Fin del mensaje de SilentSOS.`,
+        ].filter(Boolean);
+
+        return parts.join(' ');
     }
 
-    return emergency;
-  }
+    static buildContextualDescription({ emergency, triage, medicalSummary }) {
+        const user = emergency.user;
+        const name = user?.full_name || 'usuario SilentSOS';
+        const summary = triage.resumen || 'emergencia sin resumen de triage.';
 
-  static buildBaseContext(emergency) {
-    const pieces = [
-      `Emergency type: ${emergency.type}`,
-      emergency.priority ? `Priority: ${emergency.priority}` : null,
-      emergency.context_text ? `User context: ${emergency.context_text}` : null,
-      emergency.address ? `Address: ${emergency.address}` : null,
-      emergency.latitude && emergency.longitude
-        ? `Coordinates: ${emergency.latitude}, ${emergency.longitude}`
-        : null
-    ].filter(Boolean);
+        const parts = [
+            `Alerta de emergencia SilentSOS.`,
+            `El reportante se llama ${name} y es una persona con discapacidad auditiva.`,
+            `No puede escuchar al operador ni responder verbalmente.`,
+            `Tipo de emergencia: ${emergency.type === 'medical' ? 'médica' : 'general'}.`,
+            emergency.address ? `Ubicación: ${emergency.address}.` : null,
+            emergency.latitude && emergency.longitude
+                ? `Coordenadas GPS: latitud ${emergency.latitude}, longitud ${emergency.longitude}.`
+                : null,
+            emergency.context_text ? `Descripción del usuario: ${emergency.context_text}.` : null,
+            `Resumen del triage visual: ${summary}`,
+            medicalSummary ? `Antecedentes médicos: ${medicalSummary}` : null,
+            // Instrucción adicional si el operador puede comunicarse con el usuario.
+            emergency.call_mode === 'interactive'
+                ? `El operador puede hacer preguntas de sí o no al usuario. El usuario responderá mediante gestos o botones en su dispositivo móvil.`
+                : null,
+            `Por favor envíe ayuda urgente.`,
+            `Fin del mensaje de SilentSOS.`,
+        ].filter(Boolean);
 
-    return pieces.join('\n');
-  }
-
-  static shouldIncludeMedicalContext(type, triageData) {
-    if (type === 'medical') {
-      return true;
+        return parts.join(' ');
     }
 
-    const severity = String(triageData?.gravedad || '').toLowerCase();
-    const requiresAmbulance = Boolean(triageData?.requiere_ambulancia);
-    return requiresAmbulance || ['grave', 'critica', 'critical', 'severe'].includes(severity);
-  }
+    static shouldIncludeMedicalContext(type, triageData) {
+        if (type === 'medical') return true;
+        const severity = String(triageData?.gravedad || '').toLowerCase();
+        const requiresAmbulance = Boolean(triageData?.requiere_ambulancia);
+        return requiresAmbulance || ['grave', 'critica', 'critical', 'severe'].includes(severity);
+    }
 
-  static async buildMedicalSummary(userId) {
-    const diseases = await this.medicalService.getUserDiseases(userId);
-    const medications = await this.medicalService.getMedications(userId);
-    const pending = await this.medicalService.getPendingMedicationsToday(userId);
+    static async buildMedicalSummary(userId) {
+        const diseases = await this.medicalService.getUserDiseases(userId);
+        const medications = await this.medicalService.getMedications(userId);
+        const pending = await this.medicalService.getPendingMedicationsToday(userId);
 
-    const diseaseNames = diseases
-      .map((item) => item?.diseaseCatalog?.name)
-      .filter(Boolean);
+        const diseaseNames = diseases.map((d) => d?.diseaseCatalog?.name).filter(Boolean);
+        const medicationNames = medications
+            .flatMap((plan) => plan.versions || [])
+            .filter((v) => v.is_current)
+            .map((v) => `${v.name} ${v.dose}${v.unit ? ` ${v.unit}` : ''}`.trim())
+            .filter(Boolean);
+        const pendingCount = pending?.total_pending || 0;
 
-    const medicationNames = medications
-      .flatMap((plan) => plan.versions || [])
-      .filter((version) => version.is_current)
-      .map((version) => `${version.name} ${version.dose}${version.unit ? ` ${version.unit}` : ''}`.trim())
-      .filter(Boolean);
+        const lines = [
+            diseaseNames.length > 0 ? `Padecimientos crónicos: ${diseaseNames.join(', ')}.` : null,
+            medicationNames.length > 0 ? `Medicamentos actuales: ${medicationNames.join(', ')}.` : null,
+            pendingCount > 0 ? `Tiene ${pendingCount} dosis pendientes hoy.` : null,
+        ].filter(Boolean);
 
-    const pendingCount = pending?.total_pending || 0;
+        return lines.length > 0 ? lines.join(' ') : null;
+    }
 
-    const lines = [
-      diseaseNames.length > 0 ? `Chronic conditions: ${diseaseNames.join(', ')}.` : null,
-      medicationNames.length > 0 ? `Current medication: ${medicationNames.join(', ')}.` : null,
-      pendingCount > 0 ? `Pending medication doses today: ${pendingCount}.` : null
-    ].filter(Boolean);
-
-    return lines.length > 0 ? lines.join(' ') : 'No relevant medical records found.';
-  }
-
-  static buildDescription({ emergency, triage, medicalSummary }) {
-    const user = emergency.user;
-    const summary = triage.resumen || 'Emergency reported without detailed triage summary.';
-
-    const parts = [
-      `Emergency report for ${user.full_name}.`,
-      `Type: ${emergency.type}.`,
-      emergency.address ? `Address: ${emergency.address}.` : null,
-      emergency.latitude && emergency.longitude
-        ? `Coordinates: ${emergency.latitude}, ${emergency.longitude}.`
-        : null,
-      emergency.context_text ? `User context: ${emergency.context_text}.` : null,
-      `Triage summary: ${summary}`,
-      medicalSummary ? `Medical background: ${medicalSummary}` : null
-    ].filter(Boolean);
-
-    return parts.join(' ');
-  }
-
-  static extractContactNumbers(contacts = []) {
-    const unique = new Set(
-      contacts
-        .map((contact) => String(contact.cellphone || '').trim())
-        .filter(Boolean)
-    );
-
-    return Array.from(unique);
-  }
+    static extractContactNumbers(contacts = []) {
+        const unique = new Set(
+            contacts.map((c) => String(c.cellphone || '').trim()).filter(Boolean)
+        );
+        return Array.from(unique);
+    }
 }
 
 module.exports = EmergencyService;

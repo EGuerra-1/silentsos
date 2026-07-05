@@ -19,8 +19,12 @@ class ElevenLabsService {
         // Convierte resumen de emergencia en audio listo para reproducir por Twilio.
         const voiceId = options.voiceId || integrations.elevenlabs.voiceId();
         const modelId = options.modelId || integrations.elevenlabs.ttsModel();
+        // outputFormat 'ulaw_8000' para inyección directa en Twilio Media Streams.
+        const outputFormat = options.outputFormat || 'mp3_44100_128';
 
-        const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+        const url = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=${outputFormat}`;
+
+        const response = await fetch(url, {
             method: 'POST',
             headers: this.getHeaders(),
             body: JSON.stringify({
@@ -40,10 +44,11 @@ class ElevenLabsService {
 
         const arrayBuffer = await response.arrayBuffer();
 
+        const isUlaw = outputFormat.startsWith('ulaw');
         return {
             buffer: Buffer.from(arrayBuffer),
-            contentType: 'audio/mpeg',
-            extension: 'mp3',
+            contentType: isUlaw ? 'audio/basic' : 'audio/mpeg',
+            extension: isUlaw ? 'ulaw' : 'mp3',
         };
     }
 

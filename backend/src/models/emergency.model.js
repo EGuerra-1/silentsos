@@ -51,6 +51,14 @@ class Emergency extends BaseEntity {
           type: DataTypes.TEXT,
           allowNull: true
         },
+        front_image_url: {
+          type: DataTypes.TEXT,
+          allowNull: true
+        },
+        back_image_url: {
+          type: DataTypes.TEXT,
+          allowNull: true
+        },
         video_url: {
           type: DataTypes.TEXT,
           allowNull: true

@@ -1,25 +1,38 @@
 const express = require('express');
-const {
-  createUrgency,
-  createContextual,
-  getById
-} = require('../controllers/emergency.controller');
+const EmergencyController = require('../controllers/emergency.controller');
 const { checkAuth } = require('../middlewares/checkAuth');
 const validateRequest = require('../utils/validateRequest');
 const {
-  createUrgencyEmergencyRequestSchema,
-  createContextualEmergencyRequestSchema,
-  readEmergencyRequestSchema
+    createUrgencyEmergencyRequestSchema,
+    createContextualEmergencyRequestSchema,
+    readEmergencyRequestSchema,
 } = require('../validations/emergency.schema');
 
 const router = express.Router();
 
-// Ruta para botón SOS urgente: siempre usa single_context.
-router.post('/urgency', checkAuth('user'), validateRequest(createUrgencyEmergencyRequestSchema), createUrgency);
+// Botón SOS: JSON, tipo requerido, ubicación requerida, sin interacción.
+router.post(
+    '/urgency',
+    checkAuth('user'),
+    validateRequest(createUrgencyEmergencyRequestSchema),
+    EmergencyController.createUrgency
+);
 
-// Ruta para flujo con fotos/contexto: permite elegir single_context o interactive.
-router.post('/contextual', checkAuth('user'), validateRequest(createContextualEmergencyRequestSchema), createContextual);
+// Botón contextual: multipart con 2 fotos, Vision detecta tipo, modo seleccionable.
+router.post(
+    '/contextual',
+    checkAuth('user'),
+    EmergencyController.uploadContextualImages,
+    validateRequest(createContextualEmergencyRequestSchema),
+    EmergencyController.createContextual
+);
 
-router.get('/:id', checkAuth('user'), validateRequest(readEmergencyRequestSchema), getById);
+// Polling de estado desde Flutter.
+router.get(
+    '/:id',
+    checkAuth('user'),
+    validateRequest(readEmergencyRequestSchema),
+    EmergencyController.getById
+);
 
 module.exports = router;
