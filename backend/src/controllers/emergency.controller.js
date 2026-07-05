@@ -1,22 +1,18 @@
 const multer = require('multer');
-const path = require('path');
 const sharp = require('sharp');
 const catchErrors = require('../utils/tryCatch');
 const ApiResponse = require('../utils/apiResponse');
 const EmergencyService = require('../services/emergency.service');
 
 // Multer guarda imágenes en memoria para pasarlas a LocalStorageService.
+// Se valida por mimetype (Flutter suele enviar archivos sin extensión en el nombre).
 const upload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB por imagen
+    limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB por imagen (fotos de celular)
     fileFilter(req, file, cb) {
-        const allowed = ['.jpg', '.jpeg', '.png'];
-        const ext = path.extname(file.originalname).toLowerCase();
-        if (allowed.includes(ext)) {
-            cb(null, true);
-        } else {
-            cb(new Error('Solo se aceptan imágenes JPG o PNG'));
-        }
+        // image/* o el octet-stream que Flutter manda cuando no detecta el tipo.
+        const mime = file.mimetype || '';
+        cb(null, mime.startsWith('image/') || mime === 'application/octet-stream');
     },
 });
 

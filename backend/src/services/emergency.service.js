@@ -429,6 +429,18 @@ class EmergencyService {
         return `Coordenadas: latitud ${lat}, longitud ${lng}.`;
     }
 
+    // El geocoder a veces repite segmentos (ej. "San Salvador, ..., San Salvador").
+    // Se eliminan duplicados manteniendo el orden para no leer la ubicación repetida.
+    static buildLocationText(address) {
+        if (!address || !String(address).trim()) return `Ubicación: NA.`;
+        const seen = new Set();
+        const parts = String(address)
+            .split(',')
+            .map((s) => s.trim())
+            .filter((s) => s && !seen.has(s.toLowerCase()) && seen.add(s.toLowerCase()));
+        return `Ubicación: ${parts.join(', ')}.`;
+    }
+
     static buildUrgencyDescription({ emergency, medicalSummary }) {
         const name = emergency.user?.full_name || 'NA';
         const isMedical = emergency.type === 'medical';
@@ -438,7 +450,7 @@ class EmergencyService {
             `Llamada de emergencia.`,
             `La persona que reporta se llama ${name} y tiene discapacidad auditiva; no puede escuchar ni responder por voz.`,
             `Tipo de emergencia: ${isMedical ? 'médica' : 'general'}.`,
-            `Ubicación: ${emergency.address || 'NA'}.`,
+            this.buildLocationText(emergency.address),
             this.buildCoordinatesText(emergency),
             isMedical && medicalSummary ? `Información médica. ${medicalSummary}` : null,
             `Por favor envíe ayuda de inmediato.`,
@@ -456,7 +468,7 @@ class EmergencyService {
             `Llamada de emergencia.`,
             `La persona que reporta se llama ${name} y tiene discapacidad auditiva; no puede escuchar ni responder por voz.`,
             `Tipo de emergencia: ${isMedical ? 'médica' : 'general'}.`,
-            `Ubicación: ${emergency.address || 'NA'}.`,
+            this.buildLocationText(emergency.address),
             this.buildCoordinatesText(emergency),
             emergency.context_text ? `Contexto del usuario: ${emergency.context_text}.` : null,
             `Situación observada: ${summary}`,
