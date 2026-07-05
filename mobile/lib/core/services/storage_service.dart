@@ -10,6 +10,7 @@ abstract final class StorageService {
   static const String _userNameKey = 'user_name';
   static const String _userEmailKey = 'user_email';
   static const String _userRoleKey = 'user_role';
+  static const String _userCellphoneKey = 'user_cellphone';
   static const String _credentialsDateKey = 'credentials_date';
   static const String _themeModeKey = 'theme_mode';
 
@@ -18,6 +19,8 @@ abstract final class StorageService {
   static Future<String?> getUserName() => _storage.read(key: _userNameKey);
   static Future<String?> getUserEmail() => _storage.read(key: _userEmailKey);
   static Future<String?> getUserRole() => _storage.read(key: _userRoleKey);
+  static Future<String?> getUserCellphone() =>
+      _storage.read(key: _userCellphoneKey);
   static Future<String?> getCredentialsDate() =>
       _storage.read(key: _credentialsDateKey);
 
@@ -32,6 +35,7 @@ abstract final class StorageService {
     required String userName,
     required String userEmail,
     required String userRole,
+    String? userCellphone,
   }) async {
     final String nowIso = DateTime.now().toIso8601String();
     await Future.wait(<Future<void>>[
@@ -41,6 +45,22 @@ abstract final class StorageService {
       _storage.write(key: _userEmailKey, value: userEmail),
       _storage.write(key: _userRoleKey, value: userRole),
       _storage.write(key: _credentialsDateKey, value: nowIso),
+      if (userCellphone != null && userCellphone.isNotEmpty)
+        _storage.write(key: _userCellphoneKey, value: userCellphone),
+    ]);
+  }
+
+  /// Actualiza datos visibles del perfil sin invalidar la sesion.
+  static Future<void> updateUserProfile({
+    required String userName,
+    required String userEmail,
+    String? userCellphone,
+  }) async {
+    await Future.wait(<Future<void>>[
+      _storage.write(key: _userNameKey, value: userName),
+      _storage.write(key: _userEmailKey, value: userEmail),
+      if (userCellphone != null)
+        _storage.write(key: _userCellphoneKey, value: userCellphone),
     ]);
   }
 
@@ -51,6 +71,7 @@ abstract final class StorageService {
       _storage.delete(key: _userNameKey),
       _storage.delete(key: _userEmailKey),
       _storage.delete(key: _userRoleKey),
+      _storage.delete(key: _userCellphoneKey),
       _storage.delete(key: _credentialsDateKey),
     ]);
   }

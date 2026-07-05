@@ -257,10 +257,99 @@ Authorization: Bearer <token>
 
 ---
 
-### 6. Actualizar Contacto de Emergencia
+### 6. Actualizar Usuario (Perfil Propio)
 
-**Admin:** Puede actualizar cualquier contacto.
-**User:** Solo puede actualizar sus propios contactos. No se puede cambiar el `user_id`.
+**User:** Solo puede actualizar su propio perfil. **No puede cambiar su rol** (el campo `rol` se ignora del body).
+
+**Endpoint:**
+```
+PUT /users/:id
+```
+
+**Headers:**
+```
+Authorization: Bearer <token>
+```
+
+**Request Body (campos opcionales):**
+```json
+{
+  "full_name": "Daniel Morales Actualizado",
+  "email": "daniel.nuevo@gmail.com",
+  "cellphone": "87654321",
+  "password": "NuevaClave123!"
+}
+```
+
+| Campo | Tipo | Requerido | Descripción |
+|-------|------|-----------|-------------|
+| `full_name` | String | No | Nuevo nombre completo |
+| `email` | String | No | Nuevo email (debe ser único) |
+| `cellphone` | String | No | Nuevo número de celular |
+| `password` | String | No | Nueva contraseña (se encripta automáticamente) |
+| `rol` | String | - | **IGNORADO** - El usuario no puede cambiar su rol |
+
+**Respuesta Exitosa (200):**
+```json
+{
+  "success": true,
+  "route": "/users",
+  "message": "User updated",
+  "data": {
+    "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "full_name": "Daniel Morales Actualizado",
+    "email": "daniel.nuevo@gmail.com",
+    "rol": "user",
+    "cellphone": "87654321",
+    "password": "$2b$10$...",
+    "created_at": "2025-07-04T15:00:00.000Z",
+    "updated_at": "2025-07-04T16:30:00.000Z",
+    "deleted_at": null
+  }
+}
+```
+
+**Error - No autorizado (403):**
+```json
+{
+  "success": false,
+  "route": "/users",
+  "message": "",
+  "error": "Unauthorized"
+}
+```
+
+**Error - Email duplicado (400):**
+```json
+{
+  "success": false,
+  "route": "/users",
+  "message": "",
+  "error": "Email already exists"
+}
+```
+
+**Error - No encontrado (404):**
+```json
+{
+  "success": false,
+  "route": "/users",
+  "message": "",
+  "error": "User not found"
+}
+```
+
+**Notas importantes:**
+- El `user_id` debe coincidir con el ID del token JWT
+- Si se envía `rol` en el body, se ignora automáticamente
+- Si se envía `password`, se encripta antes de guardar
+- Si `password` está vacío o es null, no se actualiza
+
+---
+
+### 7. Actualizar Contacto de Emergencia
+
+**User:** Solo puede actualizar sus propios contactos. **No puede cambiar el `user_id`** (se ignora del body).
 
 **Endpoint:**
 ```
@@ -272,7 +361,7 @@ PUT /emergency_contacts/:id
 Authorization: Bearer <token>
 ```
 
-**Request Body:**
+**Request Body (campos opcionales):**
 ```json
 {
   "full_name": "María López García",
@@ -280,6 +369,13 @@ Authorization: Bearer <token>
   "relationship": "Madre"
 }
 ```
+
+| Campo | Tipo | Requerido | Descripción |
+|-------|------|-----------|-------------|
+| `full_name` | String | No | Nuevo nombre completo del contacto |
+| `cellphone` | String | No | Nuevo número de teléfono |
+| `relationship` | String | No | Nueva relación con el usuario |
+| `user_id` | UUID | - | **IGNORADO** - No se puede cambiar el propietario |
 
 **Respuesta Exitosa (200):**
 ```json
@@ -300,9 +396,34 @@ Authorization: Bearer <token>
 }
 ```
 
+**Error - No autorizado (403):**
+```json
+{
+  "success": false,
+  "route": "/emergency_contacts",
+  "message": "",
+  "error": "Unauthorized"
+}
+```
+
+**Error - No encontrado (404):**
+```json
+{
+  "success": false,
+  "route": "/emergency_contacts",
+  "message": "",
+  "error": "Emergency contact not found"
+}
+```
+
+**Notas importantes:**
+- El contacto debe pertenecer al usuario autenticado (`user_id` del contacto = `id` del token)
+- Si se envía `user_id` en el body, se ignora automáticamente
+- El usuario solo puede editar contactos que él mismo creó
+
 ---
 
-### 7. Eliminar Contacto de Emergencia
+### 8. Eliminar Contacto de Emergencia
 
 **Admin:** Puede eliminar cualquier contacto.
 **User:** Solo puede eliminar sus propios contactos (403 si no le pertenece).
@@ -327,6 +448,31 @@ Authorization: Bearer <token>
 }
 ```
 
+**Error - No autorizado (403):**
+```json
+{
+  "success": false,
+  "route": "/emergency_contacts",
+  "message": "",
+  "error": "Unauthorized"
+}
+```
+
+**Error - No encontrado (404):**
+```json
+{
+  "success": false,
+  "route": "/emergency_contacts",
+  "message": "",
+  "error": "Emergency contact not found"
+}
+```
+
+**Notas importantes:**
+- El contacto debe pertenecer al usuario autenticado
+- El admin puede eliminar cualquier contacto sin restricción
+- Es un soft delete (se marca `deleted_at`, no se elimina físicamente)
+
 ---
 
 ## Módulo Médico (Enfermedades y Medicamentos)
@@ -339,7 +485,7 @@ Authorization: Bearer <token>
 
 ---
 
-### 8. Catálogo de Enfermedades
+### 9. Catálogo de Enfermedades
 
 Obtiene la lista global de enfermedades disponibles para selección.
 
@@ -377,7 +523,7 @@ GET /medical/disease_catalogs
 
 ---
 
-### 9. Registrar Enfermedad del Usuario
+### 10. Registrar Enfermedad del Usuario
 
 Registra una enfermedad para el usuario autenticado. El `user_id` se toma automáticamente del token.
 
@@ -421,7 +567,7 @@ POST /medical/user_diseases
 
 ---
 
-### 10. Listar Enfermedades del Usuario
+### 11. Listar Enfermedades del Usuario
 
 Obtiene todas las enfermedades del usuario autenticado.
 
@@ -455,7 +601,7 @@ GET /medical/user_diseases
 
 ---
 
-### 11. Actualizar Enfermedad del Usuario
+### 12. Actualizar Enfermedad del Usuario
 
 Actualiza una enfermedad registrada. Solo si pertenece al usuario autenticado.
 
@@ -502,7 +648,7 @@ PUT /medical/user_diseases/:id
 
 ---
 
-### 12. Crear Medicamento con Horarios
+### 13. Crear Medicamento con Horarios
 
 Crea un plan de medicamento con su primera versión y horarios de toma.
 
@@ -602,7 +748,7 @@ POST /medical/medications
 
 ---
 
-### 13. Crear Múltiples Medicamentos (Bulk)
+### 14. Crear Múltiples Medicamentos (Bulk)
 
 Crea varios medicamentos en una sola transacción. Si falla uno, se hace rollback completo.
 
@@ -669,7 +815,7 @@ POST /medical/medications/bulk
 
 ---
 
-### 14. Listar Medicamentos del Usuario
+### 15. Listar Medicamentos del Usuario
 
 Obtiene todos los planes de medicamento con sus versiones y horarios.
 
@@ -716,7 +862,7 @@ GET /medical/medications
 
 ---
 
-### 15. Actualizar Medicamento (Nueva Versión)
+### 16. Actualizar Medicamento (Nueva Versión)
 
 Crea una nueva versión del medicamento. La versión anterior se cierra automáticamente.
 
@@ -775,7 +921,7 @@ PUT /medical/medications/:plan_id
 
 ---
 
-### 16. Medicamentos Pendientes del Día
+### 17. Medicamentos Pendientes del Día
 
 Obtiene los medicamentos pendientes de tomar hoy. Compara horarios vs consumos registrados.
 
@@ -823,7 +969,7 @@ GET /medical/medications/pending-today?date=2025-07-04
 
 ---
 
-### 17. Registrar Consumo de Medicamento
+### 18. Registrar Consumo de Medicamento
 
 Registra un evento de consumo (tomado, omitido o perdido).
 
@@ -872,7 +1018,7 @@ POST /medical/consumptions
 
 ---
 
-### 18. Historial de Consumos
+### 19. Historial de Consumos
 
 Obtiene el historial de consumos con filtros opcionales.
 
@@ -984,10 +1130,15 @@ Cada actualización de un medicamento crea una nueva versión:
 |----------|-------|------|---------|
 | `POST /auth/register` | - | - | Si |
 | `POST /auth/login` | - | - | Si |
+| `GET /users` | Si | No | No |
+| `POST /users` | Si (crea admin) | No | No |
+| `GET /users/:id` | Cualquiera | Solo el suyo | No |
+| `PUT /users/:id` | Cualquiera | Solo el suyo (no cambia rol) | No |
+| `DELETE /users/:id` | Si | No | No |
 | `GET /emergency_contacts` | Todos | Solo los suyos | No |
 | `GET /emergency_contacts/:id` | Cualquiera | Solo los suyos | No |
 | `POST /emergency_contacts` | Si | Si | No |
-| `PUT /emergency_contacts/:id` | Cualquiera | Solo los suyos | No |
+| `PUT /emergency_contacts/:id` | Cualquiera | Solo los suyos (no cambia user_id) | No |
 | `DELETE /emergency_contacts/:id` | Cualquiera | Solo los suyos | No |
 | `GET /medical/disease_catalogs` | - | Si | No |
 | `GET/POST /medical/user_diseases` | - | Solo suyos | No |

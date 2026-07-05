@@ -64,6 +64,7 @@ class AuthService {
       userName: session.user.fullName,
       userEmail: session.user.email,
       userRole: session.user.role,
+      userCellphone: cellphone,
     );
     return session.user;
   }

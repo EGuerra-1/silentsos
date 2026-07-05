@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/constants/emergency_relationship_options.dart';
 import '../../../../core/constants/app_duration.dart';
 import '../../../../core/constants/app_spacing.dart';
 import '../../../../core/constants/app_strings.dart';
@@ -19,14 +20,7 @@ import '../../models/register_draft.dart';
 import '../../providers/auth_provider.dart';
 import '../widgets/auth_header.dart';
 
-const List<String> _relationshipOptions = <String>[
-  'Madre',
-  'Padre',
-  'Hermano/a',
-  'Pareja',
-  'Amigo/a',
-  'Otro',
-];
+const List<String> _relationshipOptions = EmergencyRelationshipOptions.values;
 
 /// Registro paso 2 de Stitch: badge "PASO 2 DE 2" con progreso completo,
 /// icono de corazon, campos etiquetados con iconos y CTA fijo.

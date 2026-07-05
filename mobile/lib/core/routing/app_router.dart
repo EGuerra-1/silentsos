@@ -6,6 +6,10 @@ import '../../features/medical/models/medication_models.dart';
 import '../../features/medical/models/user_disease_model.dart';
 import '../../features/medical/presentation/pages/disease_form_page.dart';
 import '../../features/medical/presentation/pages/medication_form_page.dart';
+import '../../features/settings/models/emergency_contact_model.dart';
+import '../../features/settings/models/user_profile_model.dart';
+import '../../features/settings/presentation/pages/edit_emergency_contact_page.dart';
+import '../../features/settings/presentation/pages/edit_profile_page.dart';
 import '../../features/shell/presentation/pages/main_shell_page.dart';
 import '../../features/splash/presentation/pages/splash_page.dart';
 import 'app_page_route.dart';
@@ -21,6 +25,42 @@ abstract final class AppRouter {
   static const String editDisease = '/medical/diseases/edit';
   static const String addMedication = '/medical/medications/add';
   static const String editMedication = '/medical/medications/edit';
+  static const String editProfile = '/settings/profile/edit';
+  static const String editEmergencyContact = '/settings/emergency-contact/edit';
+
+  /// Abre formulario de perfil con datos opcionales precargados.
+  static Future<bool?> openEditProfile(
+    BuildContext context, {
+    UserProfileModel? profile,
+  }) {
+    return Navigator.push<bool>(
+      context,
+      AppPageRoute<bool>(
+        settings: RouteSettings(
+          name: editProfile,
+          arguments: profile,
+        ),
+        builder: (_) => EditProfilePage(initial: profile),
+      ),
+    );
+  }
+
+  /// Abre formulario de contacto de emergencia.
+  static Future<bool?> openEditEmergencyContact(
+    BuildContext context, {
+    EmergencyContactModel? contact,
+  }) {
+    return Navigator.push<bool>(
+      context,
+      AppPageRoute<bool>(
+        settings: RouteSettings(
+          name: editEmergencyContact,
+          arguments: contact,
+        ),
+        builder: (_) => EditEmergencyContactPage(initial: contact),
+      ),
+    );
+  }
 
   /// Abre formulario de medicamento con ruta tipada (evita cast en pushNamed).
   static Future<bool?> openMedicationForm(
@@ -108,6 +148,20 @@ abstract final class AppRouter {
           settings: settings,
           builder: (_) => MedicationFormPage(
             initial: settings.arguments as MedicationPlanModel?,
+          ),
+        );
+      case editProfile:
+        return AppPageRoute<bool>(
+          settings: settings,
+          builder: (_) => EditProfilePage(
+            initial: settings.arguments as UserProfileModel?,
+          ),
+        );
+      case editEmergencyContact:
+        return AppPageRoute<bool>(
+          settings: settings,
+          builder: (_) => EditEmergencyContactPage(
+            initial: settings.arguments as EmergencyContactModel?,
           ),
         );
       default:

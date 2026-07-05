@@ -118,4 +118,32 @@ abstract final class AppStrings {
       'Selecciona una enfermedad del catalogo';
   static const String scheduleRequired =
       'Agrega al menos un horario de toma';
+
+  // Ajustes / perfil
+  static const String settingsTitle = 'Ajustes';
+  static const String settingsAppearance = 'Apariencia';
+  static const String settingsProfileSection = 'Perfil';
+  static const String settingsAccountSection = 'Cuenta';
+  static const String settingsEditProfile = 'Editar datos personales';
+  static const String settingsEditEmergencyContact = 'Contacto de emergencia';
+  static const String settingsLogout = 'Cerrar sesion';
+  static const String settingsLogoutConfirmTitle = 'Cerrar sesion';
+  static const String settingsLogoutConfirmBody =
+      'Se cerrara tu sesion en este dispositivo. Deberas iniciar '
+      'sesion de nuevo para continuar.';
+  static const String settingsCancel = 'Cancelar';
+  static const String editProfileTitle = 'Editar perfil';
+  static const String editProfileSubtitle =
+      'Actualiza tu nombre, telefono, correo o contrasena.';
+  static const String editProfilePasswordHint =
+      'Nueva contrasena (opcional)';
+  static const String editEmergencyContactTitle = 'Editar contacto';
+  static const String editEmergencyContactSubtitle =
+      'Esta persona sera notificada en caso de emergencia.';
+  static const String loadProfileError =
+      'No fue posible cargar tu perfil. Intentalo de nuevo.';
+  static const String saveProfileError =
+      'No fue posible guardar los cambios. Intentalo de nuevo.';
+  static const String emergencyContactMissing =
+      'No tienes un contacto de emergencia registrado.';
 }

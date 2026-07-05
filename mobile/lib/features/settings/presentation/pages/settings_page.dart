@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_radius.dart';
 import '../../../../core/constants/app_spacing.dart';
+import '../../../../core/constants/app_strings.dart';
 import '../../../../core/extensions/context_extensions.dart';
 import '../../../../core/routing/app_router.dart';
 import '../../../../shared/widgets/animations/staggered_column.dart';
@@ -10,32 +11,90 @@ import '../../../../shared/widgets/app_page_shell.dart';
 import '../../../../shared/widgets/custom_app_bar.dart';
 import '../../../auth/providers/auth_provider.dart';
 import '../../controllers/session_controller.dart';
+import '../../models/emergency_contact_model.dart';
+import '../../providers/profile_provider.dart';
+import '../widgets/settings_nav_tile.dart';
 import '../widgets/settings_section.dart';
 import '../widgets/theme_mode_selector.dart';
 
-/// Tab Ajustes: perfil, apariencia (tema) y cierre de sesion.
+/// Tab Ajustes: perfil, contacto de emergencia, apariencia y cierre de sesion.
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
+
+  Future<void> _openEditProfile(BuildContext context, WidgetRef ref) async {
+    final bool? saved = await AppRouter.openEditProfile(context);
+    if (saved == true) {
+      ref.invalidate(sessionUserProvider);
+      ref.invalidate(userProfileProvider);
+    }
+  }
+
+  Future<void> _openEditEmergencyContact(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final bool? saved = await AppRouter.openEditEmergencyContact(context);
+    if (saved == true) {
+      ref.invalidate(emergencyContactProvider);
+    }
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final AsyncValue<SessionUser> user = ref.watch(sessionUserProvider);
+    final AsyncValue<EmergencyContactModel?> contact =
+        ref.watch(emergencyContactProvider);
 
     return AppPageShell(
-      appBar: const CustomAppBar(title: 'Ajustes', showBack: false),
+      appBar: const CustomAppBar(
+        title: AppStrings.settingsTitle,
+        showBack: false,
+      ),
       child: SingleChildScrollView(
         child: StaggeredColumn(
           children: <Widget>[
             const SizedBox(height: AppSpacing.sm),
-            _ProfileCard(user: user),
+            _ProfileCard(
+              user: user,
+              onTap: () => _openEditProfile(context, ref),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            SettingsSection(
+              title: AppStrings.settingsProfileSection,
+              child: Column(
+                children: <Widget>[
+                  SettingsNavTile(
+                    icon: Icons.person_outline,
+                    title: AppStrings.settingsEditProfile,
+                    subtitle: user.valueOrNull?.email,
+                    onTap: () => _openEditProfile(context, ref),
+                  ),
+                  Divider(
+                    height: 1,
+                    color: context.colors.outlineVariant.withOpacity(0.6),
+                  ),
+                  SettingsNavTile(
+                    icon: Icons.favorite_border_rounded,
+                    title: AppStrings.settingsEditEmergencyContact,
+                    subtitle: contact.when(
+                      loading: () => null,
+                      error: (Object error, StackTrace stackTrace) => null,
+                      data: (EmergencyContactModel? data) =>
+                          data == null ? null : '${data.fullName} · ${data.cellphone}',
+                    ),
+                    onTap: () => _openEditEmergencyContact(context, ref),
+                  ),
+                ],
+              ),
+            ),
             const SizedBox(height: AppSpacing.lg),
             const SettingsSection(
-              title: 'Apariencia',
+              title: AppStrings.settingsAppearance,
               child: ThemeModeSelector(),
             ),
             const SizedBox(height: AppSpacing.lg),
             SettingsSection(
-              title: 'Cuenta',
+              title: AppStrings.settingsAccountSection,
               child: _LogoutTile(onTap: () => _confirmLogout(context, ref)),
             ),
             const SizedBox(height: AppSpacing.lg),
@@ -62,19 +121,16 @@ class SettingsPage extends ConsumerWidget {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppRadius.xl),
           ),
-          title: const Text('Cerrar sesion'),
-          content: const Text(
-            'Se cerrara tu sesion en este dispositivo. Deberas iniciar '
-            'sesion de nuevo para continuar.',
-          ),
+          title: const Text(AppStrings.settingsLogoutConfirmTitle),
+          content: const Text(AppStrings.settingsLogoutConfirmBody),
           actions: <Widget>[
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Cancelar'),
+              child: const Text(AppStrings.settingsCancel),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('Cerrar sesion'),
+              child: const Text(AppStrings.settingsLogout),
             ),
           ],
         );
@@ -96,9 +152,13 @@ class SettingsPage extends ConsumerWidget {
 }
 
 class _ProfileCard extends StatelessWidget {
-  const _ProfileCard({required this.user});
+  const _ProfileCard({
+    required this.user,
+    required this.onTap,
+  });
 
   final AsyncValue<SessionUser> user;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -106,56 +166,61 @@ class _ProfileCard extends StatelessWidget {
     final SessionUser? data = user.valueOrNull;
 
     return AppCard(
-      child: Row(
-        children: <Widget>[
-          Container(
-            width: 56,
-            height: 56,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: <Color>[
-                  context.semantic.brandGradientStart,
-                  context.semantic.brandGradientEnd,
-                ],
-              ),
-            ),
-            child: Text(
-              data?.initial ?? 'S',
-              style: context.text.headlineSmall?.copyWith(
-                color: colors.onPrimary,
-              ),
-            ),
-          ),
-          const SizedBox(width: AppSpacing.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  data?.name ?? 'Usuario',
-                  style: context.text.bodyLarge,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        child: Row(
+          children: <Widget>[
+            Container(
+              width: 56,
+              height: 56,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: <Color>[
+                    context.semantic.brandGradientStart,
+                    context.semantic.brandGradientEnd,
+                  ],
                 ),
-                if ((data?.email ?? '').isNotEmpty) ...<Widget>[
-                  const SizedBox(height: AppSpacing.xxs),
+              ),
+              child: Text(
+                data?.initial ?? 'S',
+                style: context.text.headlineSmall?.copyWith(
+                  color: colors.onPrimary,
+                ),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
                   Text(
-                    data!.email,
-                    style: context.text.bodySmall?.copyWith(
-                      color: colors.onSurfaceVariant,
-                    ),
+                    data?.name ?? 'Usuario',
+                    style: context.text.bodyLarge,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
+                  if ((data?.email ?? '').isNotEmpty) ...<Widget>[
+                    const SizedBox(height: AppSpacing.xxs),
+                    Text(
+                      data!.email,
+                      style: context.text.bodySmall?.copyWith(
+                        color: colors.onSurfaceVariant,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
-          ),
-        ],
+            Icon(Icons.chevron_right_rounded, color: colors.onSurfaceVariant),
+          ],
+        ),
       ),
     );
   }
@@ -181,7 +246,7 @@ class _LogoutTile extends StatelessWidget {
             const SizedBox(width: AppSpacing.md),
             Expanded(
               child: Text(
-                'Cerrar sesion',
+                AppStrings.settingsLogout,
                 style: context.text.bodyMedium?.copyWith(color: danger),
               ),
             ),
