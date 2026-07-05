@@ -1,0 +1,71 @@
+# Contexto del Proyecto: SilentSOS (Backend)
+
+## Descripción General
+SilentSOS es una API en Node.js que orquesta emergencias para personas con discapacidad auditiva. Recibe peticiones desde una app Flutter (GPS, imágenes, videos), evalúa la emergencia usando OpenAI Vision, convierte el triage en audio con ElevenLabs, realiza una llamada a emergencias vía Twilio, y delega notificaciones SMS a un webhook de n8n.
+
+## Stack Tecnológico y Responsabilidades (Backend)
+- **Framework:** Node.js con Express (o NestJS, según se configure).
+- **ORM / Base de Datos:** Sequelize con PostgreSQL.
+- **Almacenamiento (Storage):** AWS S3 (Manejo de videos/imágenes subidas por Flutter).
+- **IA Vision & Triage:** API de OpenAI (`gpt-4o` o `gpt-4-vision-preview`). Analiza contexto visual y genera JSON.
+- **Síntesis de Voz (TTS):** API de ElevenLabs. Convierte el resumen textual de la emergencia en un archivo de audio (MP3 o stream).
+- **Comunicaciones (Voz):** API de Twilio. Llama a números de emergencia y reproduce el audio de ElevenLabs usando TwiML (`<Play>`).
+- **Automatización Asíncrona:** n8n. El backend hace un POST HTTP (Webhook) hacia n8n con los datos del contacto de emergencia para que n8n envíe el SMS vía Twilio.
+
+## Flujo de Estados de Emergencia (Columna `estado`)
+1. `PENDIENTE` (Recibida desde Flutter).
+2. `ANALIZANDO` (Enviada a OpenAI, si hay evidencia).
+3. `TRIAGE_GENERADO` (Respuesta de OpenAI parseada y guardada).
+4. `AUDIO_GENERADO` (Respuesta de ElevenLabs exitosa).
+5. `LLAMADA_REALIZADA` (Twilio aceptó la llamada).
+6. `SMS_ENVIADO` (Webhook a n8n enviado con éxito).
+7. `FINALIZADA` (Emergencia cerrada).
+
+## Modelo de Base de Datos Principal (PostgreSQL)
+- **Usuarios:** `id` (UUID), `nombre`, `apellido`, `correo`, `telefono`, `created_at`
+- **ContactosEmergencia:** `id` (UUID), `usuario_id` (UUID), `nombre`, `telefono`, `parentesco`
+- **Emergencias:** `id` (UUID), `usuario_id` (UUID), `tipo`, `estado`, `prioridad`, `latitud` (DECIMAL), `longitud` (DECIMAL), `direccion`, `video_url`, `imagen_url`, `created_at`
+- **Triage:** `id` (UUID), `emergencia_id` (UUID), `nivel`, `gravedad`, `lesiones` (JSON), `sintomas` (JSON), `requiere_ambulancia` (BOOLEAN), `resumen` (TEXT)
+
+## Reglas Críticas de Desarrollo para Cursor
+1. **Velocidad sobre Complejidad:** La IA no debe retrasar la solicitud. Si una petición a OpenAI falla o tarda mucho, el backend DEBE tener un mecanismo de "fallback" (timeout) que genere un resumen de emergencia genérico inmediatamente y continúe el flujo hacia ElevenLabs/Twilio.
+2. **Modularidad de Integraciones:** Crea carpetas/servicios separados para cada integración externa: `/services/openai.service.js`, `/services/elevenlabs.service.js`, `/services/twilio.service.js`, `/services/aws-s3.service.js`.
+3. **Flujo de Ejecución:** El endpoint principal que recibe la emergencia de Flutter debe ser rápido. Debe responder `200 OK` (Emergency Created) a Flutter y procesar el análisis de IA, TTS y Llamadas de forma **asíncrona** en segundo plano (promesas no bloqueantes o jobs).
+4. **Respuestas de OpenAI:** Fuerza SIEMPRE a OpenAI a responder en un formato JSON válido utilizando `response_format: { type: "json_object" }` en la petición a la API.
+5. **Twilio y ElevenLabs:** El backend debe exponer un endpoint público (ej. `/api/twilio/twiml/:emergencia_id`) que devuelva el XML (TwiML) necesario para que Twilio sepa qué URL de MP3 reproducir cuando contesten la llamada.
+
+## FASE 2: Interacción Bidireccional en Tiempo Real (Media Streams)
+
+### Objetivo
+Permitir que el Operador del 911 interactúe con el usuario sordo durante la llamada activa. El Operador habla, el sistema lo transcribe y lo envía a Flutter. El usuario sordo hace gestos, MediaPipe los detecta, Flutter envía el gesto al servidor, y el servidor genera voz sintética (ElevenLabs) que el Operador escucha en la llamada.
+
+### Stack Adicional Necesario
+- **Socket.io (WebSockets):** Comunicación en tiempo real bidireccional entre Node.js y la app de Flutter.
+- **Twilio Media Streams (WebSockets Nativos):** Comunicación de audio continuo entre Twilio y Node.js durante la llamada activa.
+- **API Fal / Whisper:** Transcripción (Speech-to-Text) ultra rápida del audio entrante del Operador.
+
+### El Flujo Bidireccional (Cómo se desarrolla la llamada)
+
+1. **Modificación del TwiML (El Puente):**
+   Cuando Twilio realiza la llamada (Paso 8 del flujo inicial), el TwiML ya no solo usa `<Play>`. Ahora debe incluir un `<Connect><Stream>` para enviar todo el audio que habla el Operador a un WebSocket en nuestro servidor Node.js.
+   
+2. **De Operador a Usuario (Voz a Texto):**
+   - El servidor Node.js recibe trozos de audio (chunks) desde Twilio vía WebSocket.
+   - Node.js envía este audio a la API de **Fal (Whisper)**.
+   - Fal devuelve la transcripción en texto (Ej: *"Hola, ¿estás herido?"*).
+   - Node.js emite este texto a la app de Flutter mediante **Socket.io**.
+   - Flutter muestra el texto en pantalla tipo subtítulos para que el usuario sordo lea.
+
+3. **De Usuario a Operador (Gestos a Voz):**
+   - El usuario en Flutter hace un gesto a la cámara (Ej: Pulgar arriba = "Sí").
+   - Flutter detecta el gesto con **MediaPipe**.
+   - Flutter emite un evento vía **Socket.io** a Node.js: `socket.emit('gesto', { id_gesto: "afirmacion" })`.
+   - Node.js recibe el gesto, lo asocia a una respuesta (Ej: *"Sí, confirmo."*) y envía el texto a **ElevenLabs**.
+   - ElevenLabs devuelve el MP3.
+   - Node.js inyecta ese audio de vuelta al WebSocket de **Twilio**.
+   - El Operador escucha la respuesta sintética en la llamada telefónica.
+
+### Reglas para Cursor (Fase 2)
+1. **Gestión de WebSockets:** Debes configurar un servidor Socket.io en Node.js que mantenga el mapeo entre el ID de la Emergencia, el ID del Socket de Flutter y el ID de la Llamada (Call SID) de Twilio.
+2. **Twilio Bidireccional:** El servicio de Twilio debe manejar eventos entrantes de Media Streams (formato de audio alaw/mulaw) y saber inyectar audio de vuelta al stream activo.
+3. **Optimización de Audio:** Las peticiones a ElevenLabs y a Fal deben priorizar modelos "Turbo" o de baja latencia para que la conversación no tenga pausas de más de 2 segundos.

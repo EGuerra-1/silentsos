@@ -36,6 +36,13 @@ const integrations = {
         defaultChannel: () => env('ZAVU_DEFAULT_CHANNEL') || 'sms',
         apiUrl: () => 'https://api.zavu.dev/v1/messages',
     },
+    n8n: {
+        configured: () => isConfigured(['N8N_EMERGENCY_WEBHOOK_URL']),
+        keys: ['N8N_EMERGENCY_WEBHOOK_URL'],
+        webhookUrl: () => env('N8N_EMERGENCY_WEBHOOK_URL'),
+        webhookSecret: () => env('N8N_EMERGENCY_WEBHOOK_SECRET'),
+        timeoutMs: () => Number(env('N8N_WEBHOOK_TIMEOUT_MS') || 10000),
+    },
     twilio: {
         configured: () => isConfigured(['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_PHONE_NUMBER']),
         keys: ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_PHONE_NUMBER'],
@@ -72,6 +79,7 @@ function getIntegrationStatus() {
         openai: integrations.openai.configured(),
         elevenlabs: integrations.elevenlabs.configured(),
         zavu: integrations.zavu.configured(),
+        n8n: integrations.n8n.configured(),
         twilio: integrations.twilio.configured(),
         awsS3: integrations.awsS3.configured(),
         publicUrl: integrations.publicUrl.configured(),

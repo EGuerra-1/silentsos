@@ -55,6 +55,8 @@ class TwilioService {
             method: 'GET',
             statusCallback: statusCallbackUrl,
             statusCallbackMethod: 'POST',
+            // Incluye "in-progress" para soportar el reintento de SMS hacia n8n.
+            statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
         });
 
         return {

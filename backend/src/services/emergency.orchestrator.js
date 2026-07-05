@@ -39,14 +39,14 @@ class EmergencyOrchestrator {
         return results;
     }
 
-    static async startEmergencyCall({ audioUrl, emergencyId }) {
+    static async startEmergencyCall({ audioUrl, emergencyId, to }) {
         if (!integrations.publicUrl.configured()) {
             throw new Error('PUBLIC_BASE_URL no configurado. Twilio necesita una URL publica.');
         }
 
         const twimlUrl = `${integrations.publicUrl.value()}/api/twilio/twiml/${emergencyId}?audioUrl=${encodeURIComponent(audioUrl)}`;
 
-        return TwilioService.makeCall({ twimlUrl });
+        return TwilioService.makeCall({ to, twimlUrl });
     }
 
     static async runDemoFlow({ contextText, imageUrl, notifyTo, call = false }) {
