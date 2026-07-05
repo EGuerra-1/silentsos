@@ -146,4 +146,49 @@ abstract final class AppStrings {
       'No fue posible guardar los cambios. Intentalo de nuevo.';
   static const String emergencyContactMissing =
       'No tienes un contacto de emergencia registrado.';
+
+  // Emergencias / SOS
+  static const String emergencyTabTitle = 'Emergencias';
+  static const String emergencyHeroTitle = 'Ayuda cuando la necesites';
+  static const String emergencyHeroBadge = 'Proteccion activa';
+  static const String emergencyHeroSubtitle =
+      'Un toque activa llamada a emergencias, comparte tu ubicacion y '
+      'notifica a tu contacto de confianza.';
+  static const String emergencyConfigSection = 'Tipo de alerta';
+  static const String emergencyActionTitle = 'Boton de emergencia';
+  static const String emergencyActionSubtitle =
+      'Disponible las 24 horas. Se pedira confirmacion antes de enviar.';
+  static const String emergencyTriggerLabel = 'Activar emergencia ahora';
+  static const String emergencyTypeMedical = 'Medica';
+  static const String emergencyTypeGeneral = 'General';
+  static const String emergencyLocationReady = 'Ubicacion lista';
+  static const String emergencyLocationPending = 'Permiso de GPS requerido';
+  static const String emergencyConfirmTitle = 'Activar emergencia?';
+  static const String emergencyConfirmMedical =
+      'Se enviara una alerta medica con tu ubicacion, antecedentes de salud '
+      'y se llamara al servicio de emergencias.';
+  static const String emergencyConfirmGeneral =
+      'Se enviara una alerta general con tu ubicacion y se llamara al '
+      'servicio de emergencias.';
+  static const String emergencyConfirmAction = 'Confirmar alerta';
+  static const String emergencyTrackingTitle = 'Emergencia en curso';
+  static const String emergencyFailedTitle = 'Emergencia con error';
+  static const String emergencyReset = 'Cerrar seguimiento';
+  static const String emergencyPhaseIdle =
+      'Toca el boton para iniciar el protocolo de ayuda.';
+  static const String emergencyPhaseLocating = 'Obteniendo tu ubicacion...';
+  static const String emergencyPhaseSending = 'Enviando alerta de emergencia...';
+  static const String emergencyPhaseTracking =
+      'Procesando en segundo plano. No cierres la app.';
+  static const String emergencyPhaseCompleted = 'Protocolo completado.';
+  static const String emergencyPhaseFailed =
+      'No se pudo completar la emergencia. Intenta de nuevo.';
+  static const String emergencyStatusPending = 'Preparando emergencia';
+  static const String emergencyStatusAnalyzing = 'Analizando situacion';
+  static const String emergencyStatusTriage = 'Generando mensaje';
+  static const String emergencyStatusAudio = 'Preparando audio';
+  static const String emergencyStatusCall = 'Contactando emergencias';
+  static const String emergencyStatusSms = 'Notificando contactos';
+  static const String emergencyStatusCompleted = 'Llamada finalizada';
+  static const String emergencyStatusFailed = 'Error en la llamada';
 }

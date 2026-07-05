@@ -13,7 +13,6 @@ import '../../../../shared/widgets/app_text_field.dart';
 import '../../../../shared/widgets/custom_app_bar.dart';
 import '../../../../shared/widgets/info_note.dart';
 import '../../../../shared/widgets/password_text_field.dart';
-import '../../controllers/session_controller.dart';
 import '../../models/user_profile_model.dart';
 import '../../providers/profile_provider.dart';
 
@@ -181,7 +180,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
     setState(() => _isSaving = true);
 
     try {
-      await ref
+      final UserProfileModel updated = await ref
           .read(profileServiceProvider)
           .updateCurrentUserProfile(
             fullName: _fullNameCtrl.text.trim(),
@@ -192,10 +191,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                 : _passwordCtrl.text,
           );
 
-      ref.invalidate(userProfileProvider);
-      ref.invalidate(sessionUserProvider);
-
-      if (mounted) Navigator.pop(context, true);
+      if (mounted) Navigator.pop(context, updated);
     } catch (error) {
       AppLogger.error('[Profile] update user fallo', error: error);
       setState(() => _apiError = _prettyError(error));

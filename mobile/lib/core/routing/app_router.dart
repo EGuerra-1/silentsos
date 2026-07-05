@@ -29,13 +29,13 @@ abstract final class AppRouter {
   static const String editEmergencyContact = '/settings/emergency-contact/edit';
 
   /// Abre formulario de perfil con datos opcionales precargados.
-  static Future<bool?> openEditProfile(
+  static Future<UserProfileModel?> openEditProfile(
     BuildContext context, {
     UserProfileModel? profile,
   }) {
-    return Navigator.push<bool>(
+    return Navigator.push<UserProfileModel>(
       context,
-      AppPageRoute<bool>(
+      AppPageRoute<UserProfileModel>(
         settings: RouteSettings(
           name: editProfile,
           arguments: profile,
@@ -46,13 +46,13 @@ abstract final class AppRouter {
   }
 
   /// Abre formulario de contacto de emergencia.
-  static Future<bool?> openEditEmergencyContact(
+  static Future<EmergencyContactModel?> openEditEmergencyContact(
     BuildContext context, {
     EmergencyContactModel? contact,
   }) {
-    return Navigator.push<bool>(
+    return Navigator.push<EmergencyContactModel>(
       context,
-      AppPageRoute<bool>(
+      AppPageRoute<EmergencyContactModel>(
         settings: RouteSettings(
           name: editEmergencyContact,
           arguments: contact,
@@ -151,14 +151,14 @@ abstract final class AppRouter {
           ),
         );
       case editProfile:
-        return AppPageRoute<bool>(
+        return AppPageRoute<UserProfileModel>(
           settings: settings,
           builder: (_) => EditProfilePage(
             initial: settings.arguments as UserProfileModel?,
           ),
         );
       case editEmergencyContact:
-        return AppPageRoute<bool>(
+        return AppPageRoute<EmergencyContactModel>(
           settings: settings,
           builder: (_) => EditEmergencyContactPage(
             initial: settings.arguments as EmergencyContactModel?,

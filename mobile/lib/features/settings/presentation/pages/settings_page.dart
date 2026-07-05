@@ -9,9 +9,12 @@ import '../../../../shared/widgets/animations/staggered_column.dart';
 import '../../../../shared/widgets/app_card.dart';
 import '../../../../shared/widgets/app_page_shell.dart';
 import '../../../../shared/widgets/custom_app_bar.dart';
+import '../../../../shared/widgets/error_state.dart';
+import '../../../../shared/widgets/loading_widget.dart';
 import '../../../auth/providers/auth_provider.dart';
-import '../../controllers/session_controller.dart';
+import '../../controllers/settings_display_controller.dart';
 import '../../models/emergency_contact_model.dart';
+import '../../models/user_profile_model.dart';
 import '../../providers/profile_provider.dart';
 import '../widgets/settings_nav_tile.dart';
 import '../widgets/settings_section.dart';
@@ -21,94 +24,116 @@ import '../widgets/theme_mode_selector.dart';
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
 
-  Future<void> _openEditProfile(BuildContext context, WidgetRef ref) async {
-    final bool? saved = await AppRouter.openEditProfile(context);
-    if (saved == true) {
-      ref.invalidate(sessionUserProvider);
-      ref.invalidate(userProfileProvider);
-    }
+  Future<void> _openEditProfile(
+    BuildContext context,
+    WidgetRef ref,
+    UserProfileModel? currentProfile,
+  ) async {
+    final UserProfileModel? updated = await AppRouter.openEditProfile(
+      context,
+      profile: currentProfile,
+    );
+    if (updated == null) return;
+    await ref.read(settingsDisplayProvider.notifier).applyProfile(updated);
   }
 
   Future<void> _openEditEmergencyContact(
     BuildContext context,
     WidgetRef ref,
+    EmergencyContactModel? currentContact,
   ) async {
-    final bool? saved = await AppRouter.openEditEmergencyContact(context);
-    if (saved == true) {
-      ref.invalidate(emergencyContactProvider);
-    }
+    final EmergencyContactModel? updated =
+        await AppRouter.openEditEmergencyContact(
+      context,
+      contact: currentContact,
+    );
+    if (updated == null) return;
+    ref.read(settingsDisplayProvider.notifier).applyEmergencyContact(updated);
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final AsyncValue<SessionUser> user = ref.watch(sessionUserProvider);
-    final AsyncValue<EmergencyContactModel?> contact =
-        ref.watch(emergencyContactProvider);
+    final AsyncValue<SettingsDisplayData> display =
+        ref.watch(settingsDisplayProvider);
 
     return AppPageShell(
       appBar: const CustomAppBar(
         title: AppStrings.settingsTitle,
         showBack: false,
       ),
-      child: SingleChildScrollView(
-        child: StaggeredColumn(
-          children: <Widget>[
-            const SizedBox(height: AppSpacing.sm),
-            _ProfileCard(
-              user: user,
-              onTap: () => _openEditProfile(context, ref),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            SettingsSection(
-              title: AppStrings.settingsProfileSection,
-              child: Column(
-                children: <Widget>[
-                  SettingsNavTile(
-                    icon: Icons.person_outline,
-                    title: AppStrings.settingsEditProfile,
-                    subtitle: user.valueOrNull?.email,
-                    onTap: () => _openEditProfile(context, ref),
-                  ),
-                  Divider(
-                    height: 1,
-                    color: context.colors.outlineVariant.withOpacity(0.6),
-                  ),
-                  SettingsNavTile(
-                    icon: Icons.favorite_border_rounded,
-                    title: AppStrings.settingsEditEmergencyContact,
-                    subtitle: contact.when(
-                      loading: () => null,
-                      error: (Object error, StackTrace stackTrace) => null,
-                      data: (EmergencyContactModel? data) =>
-                          data == null ? null : '${data.fullName} · ${data.cellphone}',
-                    ),
-                    onTap: () => _openEditEmergencyContact(context, ref),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            const SettingsSection(
-              title: AppStrings.settingsAppearance,
-              child: ThemeModeSelector(),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            SettingsSection(
-              title: AppStrings.settingsAccountSection,
-              child: _LogoutTile(onTap: () => _confirmLogout(context, ref)),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            Center(
-              child: Text(
-                'SilentSOS v1.0.0',
-                style: context.text.labelSmall?.copyWith(
-                  color: context.colors.onSurfaceVariant,
-                ),
-              ),
-            ),
-            const SizedBox(height: AppSpacing.xxl),
-          ],
+      child: display.when(
+        loading: () => const Center(child: LoadingWidget()),
+        error: (Object _, StackTrace __) => ErrorState(
+          message: AppStrings.loadProfileError,
+          onRetry: () => ref.read(settingsDisplayProvider.notifier).load(),
         ),
+        data: (SettingsDisplayData data) {
+          final SessionUser user = data.sessionUser;
+          final EmergencyContactModel? contact = data.emergencyContact;
+
+          return SingleChildScrollView(
+            child: StaggeredColumn(
+              children: <Widget>[
+                const SizedBox(height: AppSpacing.sm),
+                _ProfileCard(
+                  user: user,
+                  onTap: () => _openEditProfile(context, ref, data.profile),
+                ),
+                const SizedBox(height: AppSpacing.lg),
+                SettingsSection(
+                  title: AppStrings.settingsProfileSection,
+                  child: Column(
+                    children: <Widget>[
+                      SettingsNavTile(
+                        icon: Icons.person_outline,
+                        title: AppStrings.settingsEditProfile,
+                        subtitle: user.email,
+                        onTap: () =>
+                            _openEditProfile(context, ref, data.profile),
+                      ),
+                      Divider(
+                        height: 1,
+                        color: context.colors.outlineVariant.withOpacity(0.6),
+                      ),
+                      SettingsNavTile(
+                        icon: Icons.favorite_border_rounded,
+                        title: AppStrings.settingsEditEmergencyContact,
+                        subtitle: contact == null
+                            ? null
+                            : '${contact.fullName} · ${contact.cellphone}',
+                        onTap: () => _openEditEmergencyContact(
+                          context,
+                          ref,
+                          contact,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.lg),
+                const SettingsSection(
+                  title: AppStrings.settingsAppearance,
+                  child: ThemeModeSelector(),
+                ),
+                const SizedBox(height: AppSpacing.lg),
+                SettingsSection(
+                  title: AppStrings.settingsAccountSection,
+                  child: _LogoutTile(onTap: () => _confirmLogout(context, ref)),
+                ),
+                const SizedBox(height: AppSpacing.lg),
+                Center(
+                  child: Text(
+                    'SilentSOS v1.0.0',
+                    style: context.text.labelSmall?.copyWith(
+                      color: context.colors.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.xxl),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -140,7 +165,7 @@ class SettingsPage extends ConsumerWidget {
     if (confirmed != true) return;
 
     await ref.read(sessionControllerProvider).logout();
-    ref.invalidate(sessionUserProvider);
+    ref.invalidate(settingsDisplayProvider);
     ref.invalidate(authControllerProvider);
     if (!context.mounted) return;
     Navigator.pushNamedAndRemoveUntil(
@@ -157,13 +182,12 @@ class _ProfileCard extends StatelessWidget {
     required this.onTap,
   });
 
-  final AsyncValue<SessionUser> user;
+  final SessionUser user;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final ColorScheme colors = context.colors;
-    final SessionUser? data = user.valueOrNull;
 
     return AppCard(
       child: InkWell(
@@ -187,7 +211,7 @@ class _ProfileCard extends StatelessWidget {
                 ),
               ),
               child: Text(
-                data?.initial ?? 'S',
+                user.initial,
                 style: context.text.headlineSmall?.copyWith(
                   color: colors.onPrimary,
                 ),
@@ -199,15 +223,15 @@ class _ProfileCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   Text(
-                    data?.name ?? 'Usuario',
+                    user.name,
                     style: context.text.bodyLarge,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  if ((data?.email ?? '').isNotEmpty) ...<Widget>[
+                  if (user.email.isNotEmpty) ...<Widget>[
                     const SizedBox(height: AppSpacing.xxs),
                     Text(
-                      data!.email,
+                      user.email,
                       style: context.text.bodySmall?.copyWith(
                         color: colors.onSurfaceVariant,
                       ),

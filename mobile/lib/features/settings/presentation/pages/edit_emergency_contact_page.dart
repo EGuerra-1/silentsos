@@ -238,16 +238,15 @@ class _EditEmergencyContactPageState
     setState(() => _isSaving = true);
 
     try {
-      await ref.read(profileServiceProvider).updateEmergencyContact(
+      final EmergencyContactModel updated =
+          await ref.read(profileServiceProvider).updateEmergencyContact(
             id: contactId,
             fullName: _nameCtrl.text.trim(),
             cellphone: _phoneCtrl.text.trim(),
             relationship: _relationship!,
           );
 
-      ref.invalidate(emergencyContactProvider);
-
-      if (mounted) Navigator.pop(context, true);
+      if (mounted) Navigator.pop(context, updated);
     } catch (error) {
       AppLogger.error('[Profile] update contact fallo', error: error);
       setState(() => _apiError = _prettyError(error));
