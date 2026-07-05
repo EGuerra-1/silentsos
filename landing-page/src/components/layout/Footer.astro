@@ -1,0 +1,50 @@
+---
+import Container from '@/components/ui/Container.astro';
+import { footerLinks } from '@/constants/navigation';
+
+const year = new Date().getFullYear();
+---
+
+<footer
+  class="mt-stack-xl w-full border-t border-outline-variant bg-surface-container-lowest py-stack-xl"
+  aria-label="Pie de página"
+>
+  <Container class="flex flex-col items-center justify-between gap-gutter md:flex-row">
+    <div class="flex flex-col items-center gap-4 md:items-start">
+      <div class="text-headline-md font-bold text-primary">Silent SOS</div>
+      <p class="max-w-xs text-center text-body-md text-on-surface-variant md:text-left">
+        © {year} Silent SOS. Herramienta gratuita de comunicación silenciosa para emergencias.
+      </p>
+    </div>
+
+    <nav aria-label="Enlaces del pie de página" class="flex flex-wrap justify-center gap-8">
+      {
+        footerLinks.map((link) => (
+          <a
+            href={link.href}
+            class="text-body-md text-on-surface-variant underline transition-all hover:text-primary"
+          >
+            {link.label}
+          </a>
+        ))
+      }
+    </nav>
+
+    <div class="flex gap-4">
+      <a
+        href="#"
+        class="flex h-10 w-10 items-center justify-center rounded-full bg-surface-container transition-all hover:bg-primary hover:text-white"
+        aria-label="Compartir"
+      >
+        <span class="material-symbols-outlined" aria-hidden="true">share</span>
+      </a>
+      <a
+        href="#"
+        class="flex h-10 w-10 items-center justify-center rounded-full bg-surface-container transition-all hover:bg-primary hover:text-white"
+        aria-label="Sitio web"
+      >
+        <span class="material-symbols-outlined" aria-hidden="true">public</span>
+      </a>
+    </div>
+  </Container>
+</footer>

@@ -1,0 +1,40 @@
+---
+import { siteConfig } from '@/config/site';
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'Organization',
+      '@id': `${siteConfig.url}/#organization`,
+      name: siteConfig.name,
+      url: siteConfig.url,
+      description: siteConfig.description,
+    },
+    {
+      '@type': 'WebSite',
+      '@id': `${siteConfig.url}/#website`,
+      url: siteConfig.url,
+      name: siteConfig.name,
+      description: siteConfig.description,
+      publisher: { '@id': `${siteConfig.url}/#organization` },
+      inLanguage: siteConfig.language,
+    },
+    {
+      '@type': 'SoftwareApplication',
+      name: siteConfig.name,
+      applicationCategory: 'HealthApplication',
+      operatingSystem: 'Android, iOS',
+      offers: {
+        '@type': 'Offer',
+        price: '0',
+        priceCurrency: 'USD',
+      },
+      description: siteConfig.description,
+      url: siteConfig.url,
+    },
+  ],
+};
+---
+
+<script is:inline type="application/ld+json" set:html={JSON.stringify(jsonLd)} />

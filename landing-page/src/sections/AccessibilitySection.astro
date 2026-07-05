@@ -1,0 +1,61 @@
+---
+import Container from '@/components/ui/Container.astro';
+import Icon from '@/components/ui/Icon.astro';
+import { accessibilityItems } from '@/data/accessibility';
+---
+
+<section
+  id="accessibility"
+  class="relative py-stack-xl"
+  aria-labelledby="accessibility-heading"
+>
+  <Container>
+    <div class="glass-card relative overflow-hidden rounded-[2rem] p-12 lg:p-20">
+      <div class="grid grid-cols-1 items-center gap-16 lg:grid-cols-2">
+        <div>
+          <h2 id="accessibility-heading" class="mb-8 text-headline-xl text-deep-navy">
+            Diseño Inclusivo de Alta Gama
+          </h2>
+          <ul class="space-y-6" role="list">
+            {
+              accessibilityItems.map((item) => (
+                <li class="flex items-start gap-6">
+                  <Icon name={item.icon} class="text-3xl text-secondary" />
+                  <div>
+                    <h3 class="mb-2 text-lg text-headline-md text-deep-navy">{item.title}</h3>
+                    <p class="text-on-surface-variant">{item.description}</p>
+                  </div>
+                </li>
+              ))
+            }
+          </ul>
+        </div>
+
+        <div class="group relative">
+          <div class="overflow-hidden rounded-2xl border-4 border-white shadow-2xl transition-transform duration-500 group-hover:scale-[1.02]">
+            <img
+              src="https://lh3.googleusercontent.com/aida-public/AB6AXuAPD_loq4FZqjjC6-mAYuAnm6ftTXP3k7MacHMnosWFb3Tkr9KqshhzjX7W0PaaFDsmHDrIH6Js132015zP8Xhn7e_uDJO5fRdj2kChhZs9XUC1vkpHsdzP8gzuFFVSGykRx9920-HcXXMr6eu6gpeWFv4yzz_eNkLYS-G4sZLEmC6PH-m2_hjSwQrKWVGKw2Yp5amxbF0IrqxmjwnZ7pepxyoGpR0A1FPHYHlPOJ_3ZvPFSrQEG58e-dblGyRmY3lVdCuUSFW2e6di"
+              alt="Interfaz de usuario moderna de alto contraste diseñada para accesibilidad, con botones táctiles grandes en tonos navy y acentos verdes de seguridad"
+              width="600"
+              height="400"
+              loading="lazy"
+              decoding="async"
+              class="h-full w-full object-cover"
+            />
+          </div>
+          <div class="absolute -bottom-6 -left-6 rounded-xl bg-white p-6 shadow-lg">
+            <div class="flex items-center gap-4">
+              <div class="flex h-12 w-12 items-center justify-center rounded-full bg-secondary/10 text-secondary">
+                <Icon name="verified" filled />
+              </div>
+              <div>
+                <p class="font-bold text-deep-navy">WCAG 2.1 AAA</p>
+                <p class="text-xs text-on-surface-variant">Cumplimiento total de accesibilidad</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </Container>
+</section>

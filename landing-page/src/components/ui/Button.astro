@@ -1,0 +1,43 @@
+---
+interface Props {
+  href?: string;
+  variant?: 'primary' | 'secondary' | 'ghost' | 'store';
+  class?: string;
+  ariaLabel?: string;
+}
+
+const {
+  href,
+  variant = 'primary',
+  class: className = '',
+  ariaLabel,
+} = Astro.props;
+
+const baseClasses =
+  'inline-flex items-center justify-center font-label-md transition-all active:scale-95 focus-visible:outline-deep-navy';
+
+const variantClasses = {
+  primary:
+    'rounded-full bg-deep-navy px-6 py-2 text-white hover:opacity-90',
+  secondary:
+    'rounded-full bg-white px-12 py-5 text-lg font-bold text-deep-navy hover:bg-secondary-container',
+  ghost:
+    'rounded-xl border border-outline-variant bg-surface-container-highest px-8 py-4 text-deep-navy hover:bg-surface-container',
+  store:
+    'gap-3 rounded-xl bg-deep-navy px-8 py-4 text-white shadow-lg hover:-translate-y-1 hover:shadow-xl',
+};
+
+const classes = `${baseClasses} ${variantClasses[variant]} ${className}`;
+---
+
+{
+  href ? (
+    <a href={href} class={classes} aria-label={ariaLabel}>
+      <slot />
+    </a>
+  ) : (
+    <button type="button" class={classes} aria-label={ariaLabel}>
+      <slot />
+    </button>
+  )
+}

@@ -1,0 +1,20 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import Navbar from '@/components/layout/Navbar.astro';
+import Footer from '@/components/layout/Footer.astro';
+import HeroSection from '@/sections/HeroSection.astro';
+import FeaturesSection from '@/sections/FeaturesSection.astro';
+import HowItWorksSection from '@/sections/HowItWorksSection.astro';
+import AccessibilitySection from '@/sections/AccessibilitySection.astro';
+import CtaSection from '@/sections/CtaSection.astro';
+---
+
+<BaseLayout>
+  <Navbar slot="header" />
+  <HeroSection />
+  <FeaturesSection />
+  <HowItWorksSection />
+  <AccessibilitySection />
+  <CtaSection />
+  <Footer slot="footer" />
+</BaseLayout>

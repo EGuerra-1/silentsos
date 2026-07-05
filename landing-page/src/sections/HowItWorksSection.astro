@@ -1,0 +1,53 @@
+---
+import Container from '@/components/ui/Container.astro';
+import { processSteps } from '@/data/steps';
+---
+
+<section
+  id="how-it-works"
+  class="bg-surface py-stack-xl"
+  aria-labelledby="how-it-works-heading"
+>
+  <Container>
+    <div class="mb-16 text-center">
+      <h2 id="how-it-works-heading" class="text-headline-xl text-deep-navy">
+        Simplicidad en la Crisis
+      </h2>
+    </div>
+
+    <ol
+      class="relative m-0 flex w-full list-none flex-col items-center gap-12 p-0 md:flex-row md:items-start md:justify-between"
+      aria-label="Pasos del flujo de emergencia"
+    >
+      <div
+        class="pointer-events-none absolute left-0 right-0 top-10 hidden h-0.5 bg-outline-variant md:block"
+        aria-hidden="true"
+      ></div>
+
+      {
+        processSteps.map((step) => (
+          <li class="relative z-10 flex max-w-xs flex-1 flex-col items-center bg-surface p-4 text-center">
+            <div
+              class:list={[
+                'relative z-10 mb-6 flex h-20 w-20 shrink-0 items-center justify-center rounded-full border-4 border-white shadow-xl',
+                step.completed ? 'bg-secondary text-white' : 'bg-deep-navy text-white',
+              ]}
+              aria-hidden="true"
+            >
+              <span class="text-2xl font-bold">{step.number}</span>
+            </div>
+            <h3
+              class:list={[
+                'mb-2 text-headline-md',
+                step.completed ? 'text-secondary' : 'text-deep-navy',
+              ]}
+            >
+              {step.title}
+            </h3>
+            <p class="text-on-surface-variant">{step.description}</p>
+          </li>
+        ))
+      }
+    </ol>
+  </Container>
+</section>

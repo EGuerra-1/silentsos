@@ -1,0 +1,60 @@
+---
+import Container from '@/components/ui/Container.astro';
+import Icon from '@/components/ui/Icon.astro';
+import { features } from '@/data/features';
+---
+
+<section
+  id="features"
+  class="bg-surface-container-lowest py-stack-xl"
+  aria-labelledby="features-heading"
+>
+  <Container>
+    <div class="mb-16 text-center">
+      <h2 id="features-heading" class="mb-4 text-headline-xl text-deep-navy">
+        Poderosa en el Silencio
+      </h2>
+      <p class="mx-auto max-w-2xl text-body-lg text-on-surface-variant">
+        Tecnología de vanguardia para garantizar que su voz sea escuchada, incluso cuando
+        no pueda hablar.
+      </p>
+    </div>
+
+    <div class="grid grid-cols-1 gap-gutter md:grid-cols-3">
+      {
+        features.map((feature, index) => (
+          <article class="group relative overflow-hidden rounded-xl border border-outline-variant/30 bg-white p-10 shadow-sm transition-all hover:shadow-xl">
+            {feature.decorativeIcon && (
+              <div
+                class="absolute right-0 top-0 p-4 opacity-5 transition-opacity group-hover:opacity-10"
+                aria-hidden="true"
+              >
+                <Icon name={feature.decorativeIcon} class="text-8xl" />
+              </div>
+            )}
+            <div
+              class:list={[
+                'mb-8 flex h-14 w-14 items-center justify-center rounded-full transition-transform group-hover:scale-110',
+                feature.iconBgClass,
+                feature.iconColorClass,
+              ]}
+            >
+              <Icon name={feature.icon} filled={feature.iconFilled} class="text-3xl" />
+            </div>
+            <h3 class="mb-4 text-headline-md text-deep-navy">{feature.title}</h3>
+            {index === 1 ? (
+              <p class="leading-relaxed text-on-surface-variant">
+                Impulsada por{' '}
+                <strong class="text-deep-navy">ChatGPT y ElevenLabs</strong>. La IA interpreta
+                fotos de la escena y convierte texto a una voz hiper-realista para comunicarse
+                directamente con el 911.
+              </p>
+            ) : (
+              <p class="leading-relaxed text-on-surface-variant">{feature.description}</p>
+            )}
+          </article>
+        ))
+      }
+    </div>
+  </Container>
+</section>
