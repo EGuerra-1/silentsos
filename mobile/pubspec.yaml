@@ -34,6 +34,8 @@ dependencies:
   flutter_riverpod: ^2.5.1
   # Tipografia Inter, definida por el design system de Stitch.
   google_fonts: ^6.2.1
+  http: ^1.2.2
+  flutter_secure_storage: ^9.2.2
 
 dev_dependencies:
   flutter_test:
