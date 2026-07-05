@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../home/presentation/pages/home_page.dart';
-import '../../../medications/presentation/pages/medications_page.dart';
+import '../../../medical/presentation/pages/health_page.dart';
 import '../../../settings/presentation/pages/settings_page.dart';
 import '../widgets/app_bottom_nav.dart';
 
@@ -18,7 +18,7 @@ class _MainShellPageState extends ConsumerState<MainShellPage> {
 
   static const List<Widget> _pages = <Widget>[
     HomePage(),
-    MedicationsPage(),
+    HealthPage(),
     SettingsPage(),
   ];
 
@@ -31,7 +31,7 @@ class _MainShellPageState extends ConsumerState<MainShellPage> {
     AppBottomNavItem(
       icon: Icons.medication_outlined,
       activeIcon: Icons.medication_rounded,
-      label: 'Medicamento',
+      label: 'Salud',
     ),
     AppBottomNavItem(
       icon: Icons.settings_outlined,

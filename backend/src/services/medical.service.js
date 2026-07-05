@@ -10,6 +10,10 @@ const {
 } = require('../models');
 
 class MedicalService {
+  static normalizeTimeKey(value) {
+    return String(value).slice(0, 5);
+  }
+
   // Ordena versiones y horarios para entregar respuestas estables al cliente.
   static normalizeMedicationPlan(plan) {
     if (!plan) return plan;
@@ -366,14 +370,14 @@ class MedicalService {
     const consumedMap = new Set(
       consumptions
         .filter((item) => item.scheduled_time)
-        .map((item) => `${item.medication_plan_id}::${item.scheduled_time}`)
+        .map((item) => `${item.medication_plan_id}::${MedicalService.normalizeTimeKey(item.scheduled_time)}`)
     );
 
     const pending = [];
     for (const plan of plans) {
       const currentVersion = plan.versions[0];
       for (const schedule of currentVersion.schedules) {
-        const key = `${plan.id}::${schedule.time_of_day}`;
+        const key = `${plan.id}::${MedicalService.normalizeTimeKey(schedule.time_of_day)}`;
         if (!consumedMap.has(key)) {
           pending.push({
             medication_plan_id: plan.id,
@@ -382,7 +386,8 @@ class MedicalService {
             unit: currentVersion.unit,
             frequency: currentVersion.frequency,
             scheduled_time: schedule.time_of_day,
-            schedule_notes: schedule.notes
+            schedule_notes: schedule.notes,
+            status: 'pending'
           });
         }
       }

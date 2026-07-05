@@ -56,4 +56,56 @@ abstract final class AppStrings {
       'Debe tener al menos 8 caracteres';
   static const String validationPasswordMatch =
       'Las contrasenas no coinciden';
+
+  // Salud / modulo medico
+  static const String healthTitle = 'Salud';
+  static const String diseasesTab = 'Enfermedades';
+  static const String medicationsTab = 'Medicamentos';
+  static const String diseasesEmpty =
+      'Aun no tienes enfermedades registradas. Agrega la primera para '
+      'completar tu perfil medico.';
+  static const String medicationsEmpty =
+      'Aun no tienes medicamentos registrados. Crea tu primer tratamiento '
+      'con horarios de toma.';
+  static const String addDisease = 'Agregar enfermedad';
+  static const String editDisease = 'Editar enfermedad';
+  static const String addMedication = 'Agregar medicamento';
+  static const String editMedication = 'Actualizar tratamiento';
+  static const String saveChanges = 'Guardar cambios';
+  static const String diseaseCatalogLabel = 'Enfermedad del catalogo';
+  static const String diseaseCatalogHint = 'Selecciona una enfermedad';
+  static const String diseaseNotesLabel = 'Notas (opcional)';
+  static const String diseaseNotesHint = 'Ej: Diagnosticada hace 5 anos';
+  static const String diseaseDiagnosedLabel = 'Fecha de diagnostico (opcional)';
+  static const String medicationTitleLabel = 'Titulo del tratamiento (opcional)';
+  static const String medicationNameLabel = 'Nombre del medicamento';
+  static const String medicationDoseLabel = 'Dosis';
+  static const String medicationUnitLabel = 'Unidad';
+  static const String medicationFrequencyLabel = 'Frecuencia';
+  static const String medicationObservationsLabel = 'Observaciones (opcional)';
+  static const String schedulesLabel = 'Horarios de toma';
+  static const String addSchedule = 'Agregar horario';
+  static const String scheduleNotesHint = 'Nota del horario (opcional)';
+  static const String pendingToday = 'Pendientes de hoy';
+  static const String medicationsTodayTab = 'Hoy';
+  static const String medicationsManageTab = 'Tratamientos';
+  static const String pendingEmpty =
+      'No tienes dosis pendientes por ahora. Buen trabajo.';
+  static const String markTaken = 'Ya lo tome';
+  static const String myMedications = 'Mis medicamentos';
+  static const String consumptionHistory = 'Historial de tomas';
+  static const String consumptionHistoryEmpty =
+      'Aun no hay registros de consumo en los ultimos 7 dias.';
+  static const String recentActivity = 'Actividad reciente';
+  static const String markConsumed = 'Tomado';
+  static const String markSkipped = 'Omitido';
+  static const String markMissed = 'Perdido';
+  static const String loadMedicalError =
+      'No fue posible cargar tu informacion medica.';
+  static const String saveMedicalError =
+      'No fue posible guardar los cambios. Intentalo de nuevo.';
+  static const String selectDiseaseRequired =
+      'Selecciona una enfermedad del catalogo';
+  static const String scheduleRequired =
+      'Agrega al menos un horario de toma';
 }
