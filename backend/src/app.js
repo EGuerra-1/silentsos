@@ -11,8 +11,6 @@ const checkOrigin = require('./utils/check_origin'); // Middleware para verifica
 const app = express();
 
 // Middlewares de seguridad y optimización
-app.use(cors()); // Habilita CORS para todas las rutas
-app.use(checkOrigin); // Verifica el origen de la solicitud
 app.use(helmet()); // Protege contra vulnerabilidades comunes
 app.use(compression()); // Reduce el tamaño de las respuestas HTTP
 app.use(morgan('dev')); // Loguea las peticiones en consola
