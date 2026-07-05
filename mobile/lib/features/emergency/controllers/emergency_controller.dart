@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/exceptions/app_exception.dart';
 import '../../../core/services/app_logger.dart';
 import '../models/emergency_model.dart';
 import '../services/emergency_service.dart';
@@ -24,6 +25,7 @@ class EmergencyFlowState {
     this.locationLabel,
     this.emergency,
     this.errorMessage,
+    this.isContextual = false,
   });
 
   final EmergencyType selectedType;
@@ -32,6 +34,7 @@ class EmergencyFlowState {
   final String? locationLabel;
   final EmergencyModel? emergency;
   final String? errorMessage;
+  final bool isContextual;
 
   bool get isBusy =>
       phase == EmergencyFlowPhase.locating ||
@@ -45,6 +48,7 @@ class EmergencyFlowState {
     String? locationLabel,
     EmergencyModel? emergency,
     String? errorMessage,
+    bool? isContextual,
     bool clearError = false,
     bool clearEmergency = false,
   }) {
@@ -55,6 +59,7 @@ class EmergencyFlowState {
       locationLabel: locationLabel ?? this.locationLabel,
       emergency: clearEmergency ? null : emergency ?? this.emergency,
       errorMessage: clearError ? null : errorMessage ?? this.errorMessage,
+      isContextual: isContextual ?? this.isContextual,
     );
   }
 }
@@ -66,6 +71,8 @@ class EmergencyController extends StateNotifier<EmergencyFlowState> {
   final EmergencyService _service;
   Timer? _pollTimer;
   bool _disposed = false;
+  int _pollFailures = 0;
+  static const int _maxPollFailures = 5;
 
   @override
   void dispose() {
@@ -103,6 +110,7 @@ class EmergencyController extends StateNotifier<EmergencyFlowState> {
 
     state = state.copyWith(
       phase: EmergencyFlowPhase.locating,
+      isContextual: false,
       clearError: true,
       clearEmergency: true,
     );
@@ -114,9 +122,7 @@ class EmergencyController extends StateNotifier<EmergencyFlowState> {
       state = state.copyWith(
         phase: EmergencyFlowPhase.sending,
         locationReady: true,
-        locationLabel: location.address ??
-            '${location.latitude.toStringAsFixed(5)}, '
-                '${location.longitude.toStringAsFixed(5)}',
+        locationLabel: _locationLabel(location),
       );
 
       final EmergencyModel created = await _service.triggerUrgency(
@@ -124,6 +130,11 @@ class EmergencyController extends StateNotifier<EmergencyFlowState> {
         location: location,
       );
       if (_disposed) return;
+      if (created.id.isEmpty) {
+        throw const AppException(
+          'El servidor no devolvio el identificador de la emergencia.',
+        );
+      }
 
       state = state.copyWith(
         phase: EmergencyFlowPhase.tracking,
@@ -140,6 +151,53 @@ class EmergencyController extends StateNotifier<EmergencyFlowState> {
     }
   }
 
+  /// Flujo contextual: GPS preciso -> fotos + texto -> POST contextual -> polling.
+  Future<void> triggerContextual(ContextualEmergencyPayload payload) async {
+    if (state.isBusy) return;
+
+    state = state.copyWith(
+      phase: EmergencyFlowPhase.locating,
+      isContextual: true,
+      clearError: true,
+      clearEmergency: true,
+    );
+
+    try {
+      final EmergencyLocation location = await _service.getCurrentLocation();
+      if (_disposed) return;
+
+      state = state.copyWith(
+        phase: EmergencyFlowPhase.sending,
+        locationReady: true,
+        locationLabel: _locationLabel(location),
+      );
+
+      final EmergencyModel created = await _service.triggerContextual(
+        payload: payload,
+        location: location,
+      );
+      if (_disposed) return;
+      if (created.id.isEmpty) {
+        throw const AppException(
+          'El servidor no devolvio el identificador de la emergencia.',
+        );
+      }
+
+      state = state.copyWith(
+        phase: EmergencyFlowPhase.tracking,
+        emergency: created,
+      );
+      _startPolling(created.id);
+    } catch (error) {
+      AppLogger.error('[Emergency] trigger contextual fallo', error: error);
+      if (_disposed) return;
+      state = state.copyWith(
+        phase: EmergencyFlowPhase.failed,
+        errorMessage: _messageFrom(error),
+      );
+    }
+  }
+
   void reset() {
     _pollTimer?.cancel();
     state = const EmergencyFlowState();
@@ -148,11 +206,14 @@ class EmergencyController extends StateNotifier<EmergencyFlowState> {
 
   void _startPolling(String emergencyId) {
     _pollTimer?.cancel();
+    _pollFailures = 0;
     _pollTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
       try {
         final EmergencyModel latest =
             await _service.pollStatus(emergencyId);
         if (_disposed) return;
+
+        _pollFailures = 0;
 
         final EmergencyFlowPhase nextPhase = latest.status.isTerminal
             ? (latest.status == EmergencyStatus.completed
@@ -169,7 +230,19 @@ class EmergencyController extends StateNotifier<EmergencyFlowState> {
           _pollTimer?.cancel();
         }
       } catch (error) {
-        AppLogger.error('[Emergency] polling fallo', error: error);
+        _pollFailures++;
+        AppLogger.error(
+          '[Emergency] polling fallo ($_pollFailures/$_maxPollFailures)',
+          error: error,
+        );
+        if (_disposed) return;
+        if (_pollFailures >= _maxPollFailures) {
+          _pollTimer?.cancel();
+          state = state.copyWith(
+            phase: EmergencyFlowPhase.failed,
+            errorMessage: _messageFrom(error),
+          );
+        }
       }
     });
   }
@@ -181,5 +254,17 @@ class EmergencyController extends StateNotifier<EmergencyFlowState> {
       return raw.substring(prefix.length, raw.length - 1);
     }
     return 'No fue posible activar la emergencia.';
+  }
+
+  String _locationLabel(EmergencyLocation location) {
+    final String coords =
+        '${location.latitude.toStringAsFixed(6)}, '
+        '${location.longitude.toStringAsFixed(6)}';
+    final String? accuracy = location.accuracyMeters == null
+        ? null
+        : '±${location.accuracyMeters!.round()} m';
+    final String base = location.address ?? coords;
+    if (accuracy == null) return base;
+    return '$base ($accuracy)';
   }
 }

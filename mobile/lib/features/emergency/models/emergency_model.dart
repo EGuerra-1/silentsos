@@ -95,9 +95,24 @@ class EmergencyLocation {
     required this.latitude,
     required this.longitude,
     this.address,
+    this.accuracyMeters,
   });
 
   final double latitude;
   final double longitude;
   final String? address;
+  final double? accuracyMeters;
+}
+
+/// Imagenes capturadas para POST /emergencies/contextual.
+class ContextualEmergencyPayload {
+  const ContextualEmergencyPayload({
+    required this.frontImagePath,
+    required this.backImagePath,
+    this.contextText,
+  });
+
+  final String frontImagePath;
+  final String backImagePath;
+  final String? contextText;
 }

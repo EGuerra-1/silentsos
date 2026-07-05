@@ -28,6 +28,12 @@ class EmergencyService {
     );
   }
 
+  Future<EmergencyModel> triggerContextual({
+    required ContextualEmergencyPayload payload,
+    required EmergencyLocation location,
+  }) =>
+      _repository.createContextual(payload: payload, location: location);
+
   Future<EmergencyModel> pollStatus(String emergencyId) =>
       _repository.getById(emergencyId);
 }

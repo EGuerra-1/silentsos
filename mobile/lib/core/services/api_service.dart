@@ -59,6 +59,25 @@ abstract final class ApiService {
     );
   }
 
+  /// POST multipart/form-data (p. ej. emergencias contextuales con imagenes).
+  static Future<Map<String, dynamic>> sendMultipart(
+    String endpoint, {
+    required Map<String, String> fields,
+    required List<ApiMultipartFile> files,
+    bool authRequired = true,
+    String? tokenOverride,
+  }) {
+    return _queueRequest(
+      () => _multipartRequest(
+        endpoint,
+        fields: fields,
+        files: files,
+        authRequired: authRequired,
+        tokenOverride: tokenOverride,
+      ),
+    );
+  }
+
   static Future<Map<String, dynamic>> _queueRequest(
     Future<Map<String, dynamic>> Function() request,
   ) async {
@@ -148,6 +167,61 @@ abstract final class ApiService {
     }
   }
 
+  static Future<Map<String, dynamic>> _multipartRequest(
+    String endpoint, {
+    required Map<String, String> fields,
+    required List<ApiMultipartFile> files,
+    required bool authRequired,
+    String? tokenOverride,
+  }) async {
+    try {
+      final Uri uri = Uri.parse('${AppConfig.baseUrl}$endpoint');
+      final String? token = tokenOverride ?? await StorageService.getToken();
+      final http.MultipartRequest request = http.MultipartRequest('POST', uri);
+
+      if (authRequired && token != null && token.isNotEmpty) {
+        request.headers['Authorization'] = 'Bearer $token';
+      }
+
+      request.fields.addAll(fields);
+
+      for (final ApiMultipartFile file in files) {
+        request.files.add(
+          await http.MultipartFile.fromPath(
+            file.field,
+            file.path,
+            filename: file.filename,
+          ),
+        );
+      }
+
+      AppLogger.info(
+        '[API] POST $endpoint | auth:$authRequired | multipart:${files.length}',
+      );
+
+      final http.StreamedResponse streamed = await request.send();
+      final http.Response response = await http.Response.fromStream(streamed);
+      final Map<String, dynamic> handled = _handleResponse(response);
+      if (handled['ok'] != true) {
+        AppLogger.warning(
+          '[API] POST $endpoint fallo | status:${handled['statusCode']} '
+          '| body:${handled['body']}',
+        );
+      }
+      return handled;
+    } catch (error) {
+      AppLogger.error(
+        '[API] POST $endpoint multipart exception',
+        error: error,
+      );
+      return <String, dynamic>{
+        'ok': false,
+        'statusCode': 0,
+        'error': error.toString(),
+      };
+    }
+  }
+
   static Future<http.Response> _makeRequest(
     Uri uri, {
     required String method,
@@ -185,5 +259,30 @@ abstract final class ApiService {
       'statusCode': statusCode,
       'body': body,
     };
+  }
+}
+
+/// Archivo adjunto para requests multipart.
+class ApiMultipartFile {
+  const ApiMultipartFile({
+    required this.field,
+    required this.path,
+    this.filename,
+  });
+
+  final String field;
+  final String path;
+  final String? filename;
+
+  static ApiMultipartFile fromPath({
+    required String field,
+    required String path,
+  }) {
+    final String name = path.split('/').last;
+    return ApiMultipartFile(
+      field: field,
+      path: path,
+      filename: name,
+    );
   }
 }

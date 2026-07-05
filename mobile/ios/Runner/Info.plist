@@ -28,6 +28,8 @@
 	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>SilentSOS necesita tu ubicacion para enviar ayuda de emergencia y compartirla con el servicio de emergencias.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>SilentSOS necesita la camara para capturar fotos de la emergencia y que la IA analice la situacion.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

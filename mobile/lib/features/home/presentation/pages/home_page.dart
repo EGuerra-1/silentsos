@@ -5,21 +5,21 @@ import '../../../../core/constants/app_radius.dart';
 import '../../../../core/constants/app_spacing.dart';
 import '../../../../core/constants/app_strings.dart';
 import '../../../../core/extensions/context_extensions.dart';
+import '../../../../core/services/app_logger.dart';
 import '../../../../shared/widgets/animations/fade_slide_in.dart';
-import '../../../../shared/widgets/animations/staggered_column.dart';
-import '../../../../shared/widgets/app_card.dart';
 import '../../../../shared/widgets/app_page_shell.dart';
 import '../../../../shared/widgets/custom_app_bar.dart';
 import '../../../../shared/widgets/info_note.dart';
 import '../../../emergency/controllers/emergency_controller.dart';
 import '../../../emergency/models/emergency_model.dart';
 import '../../../emergency/providers/emergency_provider.dart';
-import '../../../emergency/presentation/widgets/emergency_progress_card.dart';
-import '../../../emergency/presentation/widgets/emergency_type_selector.dart';
-import '../../../emergency/presentation/widgets/emergency_sos_action.dart';
-import '../../../emergency/presentation/widgets/location_status_chip.dart';
+import '../../../emergency/presentation/widgets/contextual_emergency_sheet.dart';
+import '../../../emergency/presentation/widgets/emergency_dashboard_header.dart';
+import '../../../emergency/presentation/widgets/emergency_dual_actions_panel.dart';
+import '../../../emergency/presentation/widgets/emergency_tracking_panel.dart';
+import '../../../emergency/services/contextual_image_picker.dart';
 
-/// Tab Emergencias: tipo de alerta, ubicacion y accion SOS.
+/// Tab Emergencias con dashboard header y seguimiento visual del protocolo.
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
 
@@ -28,6 +28,8 @@ class HomePage extends ConsumerStatefulWidget {
 }
 
 class _HomePageState extends ConsumerState<HomePage> {
+  bool _isCapturingPhotos = false;
+
   @override
   void initState() {
     super.initState();
@@ -36,9 +38,9 @@ class _HomePageState extends ConsumerState<HomePage> {
     });
   }
 
-  Future<void> _confirmAndTrigger() async {
+  Future<void> _confirmAndTriggerSos() async {
     final EmergencyFlowState flow = ref.read(emergencyControllerProvider);
-    if (flow.isBusy) return;
+    if (flow.isBusy || _isCapturingPhotos) return;
 
     final bool? confirmed = await showDialog<bool>(
       context: context,
@@ -80,6 +82,47 @@ class _HomePageState extends ConsumerState<HomePage> {
     await ref.read(emergencyControllerProvider.notifier).triggerSos();
   }
 
+  Future<void> _startContextualFlow() async {
+    final EmergencyFlowState flow = ref.read(emergencyControllerProvider);
+    if (flow.isBusy || _isCapturingPhotos) return;
+
+    setState(() => _isCapturingPhotos = true);
+
+    try {
+      final ContextualImageCaptureResult? capture =
+          await ContextualImagePicker.captureBoth();
+      if (!mounted) return;
+      if (capture == null) return;
+
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        showDragHandle: false,
+        backgroundColor: context.colors.surface,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(AppRadius.xl),
+          ),
+        ),
+        builder: (BuildContext sheetContext) {
+          return ContextualEmergencySheet(
+            capture: capture,
+            onRetake: _startContextualFlow,
+          );
+        },
+      );
+    } catch (error) {
+      AppLogger.error('[Emergency] captura contextual fallo', error: error);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AppStrings.emergencyContextCameraError)),
+      );
+    } finally {
+      if (mounted) setState(() => _isCapturingPhotos = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final EmergencyFlowState flow = ref.watch(emergencyControllerProvider);
@@ -87,93 +130,140 @@ class _HomePageState extends ConsumerState<HomePage> {
         flow.phase != EmergencyFlowPhase.idle;
     final bool canTrigger = flow.phase != EmergencyFlowPhase.tracking &&
         flow.phase != EmergencyFlowPhase.completed;
+    final bool sosBusy = _isSosBusy(flow);
+    final bool contextualBusy = _isContextualBusy(flow);
 
     return AppPageShell(
       appBar: const CustomAppBar(
         title: AppStrings.emergencyTabTitle,
         showBack: false,
       ),
-      child: SingleChildScrollView(
-        child: StaggeredColumn(
-          children: <Widget>[
-            const SizedBox(height: AppSpacing.sm),
-            FadeSlideIn(
-              child: AppCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      AppStrings.emergencyConfigSection.toUpperCase(),
-                      style: context.text.labelSmall?.copyWith(
-                        color: context.colors.onSurfaceVariant,
-                        letterSpacing: 0.8,
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.md),
-                    EmergencyTypeSelector(
-                      selected: flow.selectedType,
-                      onChanged: ref
-                          .read(emergencyControllerProvider.notifier)
-                          .selectType,
-                      enabled: !flow.isBusy &&
-                          flow.phase != EmergencyFlowPhase.tracking,
-                    ),
-                    if (flow.locationLabel?.isNotEmpty == true) ...<Widget>[
-                      const SizedBox(height: AppSpacing.lg),
-                      LocationStatusChip(
-                        ready: flow.locationReady,
-                        label: flow.locationLabel,
-                      ),
-                    ],
-                  ],
-                ),
-              ),
+      child: showProgress
+          ? _buildTrackingView(flow)
+          : _buildIdleView(
+              flow: flow,
+              canTrigger: canTrigger,
+              sosBusy: sosBusy,
+              contextualBusy: contextualBusy,
             ),
-            const SizedBox(height: AppSpacing.lg),
-            FadeSlideIn(
-              delay: AppDuration.stagger,
-              child: EmergencySosAction(
-                enabled: canTrigger,
-                isLoading: flow.isBusy,
-                statusHint: _phaseHint(flow),
-                onPressed: _confirmAndTrigger,
-              ),
-            ),
-            if (flow.errorMessage != null) ...<Widget>[
-              const SizedBox(height: AppSpacing.md),
-              InfoNote(
-                message: flow.errorMessage!,
-                icon: Icons.error_outline,
-                tone: InfoNoteTone.error,
-              ),
-            ],
-            if (showProgress) ...<Widget>[
-              const SizedBox(height: AppSpacing.lg),
-              FadeSlideIn(
-                delay: AppDuration.stagger * 2,
-                child: EmergencyProgressCard(
-                  state: flow,
-                  onReset: ref
-                      .read(emergencyControllerProvider.notifier)
-                      .reset,
-                ),
-              ),
-            ],
-            const SizedBox(height: AppSpacing.xxl),
-          ],
+    );
+  }
+
+  Widget _buildIdleView({
+    required EmergencyFlowState flow,
+    required bool canTrigger,
+    required bool sosBusy,
+    required bool contextualBusy,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        FadeSlideIn(
+          child: EmergencyDashboardHeader(flow: flow),
         ),
+        const SizedBox(height: AppSpacing.lg),
+        Expanded(
+          child: FadeSlideIn(
+            delay: AppDuration.stagger,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                EmergencyDualActionsPanel(
+                  enabled: canTrigger,
+                  typeEnabled: !flow.isBusy,
+                  sosLoading: sosBusy,
+                  contextualLoading: contextualBusy,
+                  statusHint: _phaseHint(flow),
+                  selectedType: flow.selectedType,
+                  onTypeChanged: ref
+                      .read(emergencyControllerProvider.notifier)
+                      .selectType,
+                  onSosPressed: canTrigger ? _confirmAndTriggerSos : null,
+                  onContextualPressed:
+                      canTrigger ? _startContextualFlow : null,
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (flow.errorMessage != null) ...<Widget>[
+          InfoNote(
+            message: flow.errorMessage!,
+            icon: Icons.error_outline,
+            tone: InfoNoteTone.error,
+          ),
+          const SizedBox(height: AppSpacing.sm),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildTrackingView(EmergencyFlowState flow) {
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          FadeSlideIn(
+            child: EmergencyDashboardHeader(flow: flow, isActive: true),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          FadeSlideIn(
+            delay: AppDuration.stagger,
+            child: EmergencyTrackingPanel(
+              state: flow,
+              onReset: ref.read(emergencyControllerProvider.notifier).reset,
+            ),
+          ),
+          if (flow.errorMessage != null) ...<Widget>[
+            const SizedBox(height: AppSpacing.md),
+            InfoNote(
+              message: flow.errorMessage!,
+              icon: Icons.error_outline,
+              tone: InfoNoteTone.error,
+            ),
+          ],
+          const SizedBox(height: AppSpacing.lg),
+          FadeSlideIn(
+            delay: AppDuration.stagger * 2,
+            child: Text(
+              _phaseHint(flow),
+              textAlign: TextAlign.center,
+              style: context.text.bodySmall?.copyWith(
+                color: context.colors.onSurfaceVariant,
+              ),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xxl),
+        ],
       ),
     );
   }
 
+  bool _isSosBusy(EmergencyFlowState flow) {
+    return (flow.phase == EmergencyFlowPhase.locating && !flow.isContextual) ||
+        (flow.phase == EmergencyFlowPhase.sending && !flow.isContextual);
+  }
+
+  bool _isContextualBusy(EmergencyFlowState flow) {
+    return _isCapturingPhotos ||
+        (flow.phase == EmergencyFlowPhase.locating && flow.isContextual) ||
+        (flow.phase == EmergencyFlowPhase.sending && flow.isContextual);
+  }
+
   String _phaseHint(EmergencyFlowState flow) {
+    if (_isCapturingPhotos) {
+      return AppStrings.emergencyContextCapturing;
+    }
     return switch (flow.phase) {
       EmergencyFlowPhase.locating => AppStrings.emergencyPhaseLocating,
-      EmergencyFlowPhase.sending => AppStrings.emergencyPhaseSending,
+      EmergencyFlowPhase.sending => flow.isContextual
+          ? AppStrings.emergencyPhaseSendingContextual
+          : AppStrings.emergencyPhaseSending,
       EmergencyFlowPhase.tracking => AppStrings.emergencyPhaseTracking,
       EmergencyFlowPhase.completed => AppStrings.emergencyPhaseCompleted,
       EmergencyFlowPhase.failed => AppStrings.emergencyPhaseFailed,
-      EmergencyFlowPhase.idle => AppStrings.emergencyPhaseIdle,
+      EmergencyFlowPhase.idle => AppStrings.emergencyPhaseIdleDual,
     };
   }
 }

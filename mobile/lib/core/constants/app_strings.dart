@@ -149,12 +149,34 @@ abstract final class AppStrings {
 
   // Emergencias / SOS
   static const String emergencyTabTitle = 'Emergencias';
+  static const String emergencyDashboardTitle = 'Centro de emergencias';
+  static const String emergencyDashboardSubtitle =
+      'Activa ayuda inmediata o envia contexto visual con IA.';
+  static const String emergencyDashboardActiveTitle = 'Protocolo activo';
+  static const String emergencyDashboardLiveBadge = 'En vivo';
+  static const String emergencyDashboardContextBadge = 'Con Vision IA';
+  static const String emergencyTrackingStepsTitle = 'Progreso del protocolo';
+  static const String emergencyTrackingStepActive = 'Paso en curso';
   static const String emergencyHeroTitle = 'Ayuda cuando la necesites';
   static const String emergencyHeroBadge = 'Proteccion activa';
   static const String emergencyHeroSubtitle =
       'Un toque activa llamada a emergencias, comparte tu ubicacion y '
       'notifica a tu contacto de confianza.';
   static const String emergencyConfigSection = 'Tipo de alerta';
+  static const String emergencyModesSection = 'Como activar la ayuda';
+  static const String emergencyModesOr = 'o';
+  static const String emergencySosModeTitle = 'SOS rapido';
+  static const String emergencySosModeSubtitle =
+      'Alerta inmediata con ubicacion precisa.';
+  static const String emergencyContextModeTitle = 'Con contexto';
+  static const String emergencyContextModeSubtitle =
+      'Captura escena y rostro; la IA analiza y llama.';
+  static const String emergencyContextCaptureShort = 'Fotos';
+  static const String emergencyContextCapturingShort = '...';
+  static const String emergencyContextCapturing =
+      'Abriendo camaras: escena y rostro...';
+  static const String emergencyPhaseIdleDual =
+      'SOS arriba para alerta rapida. Abajo para emergencia con fotos.';
   static const String emergencyActionTitle = 'Boton de emergencia';
   static const String emergencyActionSubtitle =
       'Disponible las 24 horas. Se pedira confirmacion antes de enviar.';
@@ -178,6 +200,8 @@ abstract final class AppStrings {
       'Toca el boton para iniciar el protocolo de ayuda.';
   static const String emergencyPhaseLocating = 'Obteniendo tu ubicacion...';
   static const String emergencyPhaseSending = 'Enviando alerta de emergencia...';
+  static const String emergencyPhaseSendingContextual =
+      'Enviando fotos y ubicacion precisa...';
   static const String emergencyPhaseTracking =
       'Procesando en segundo plano. No cierres la app.';
   static const String emergencyPhaseCompleted = 'Protocolo completado.';
@@ -191,4 +215,37 @@ abstract final class AppStrings {
   static const String emergencyStatusSms = 'Notificando contactos';
   static const String emergencyStatusCompleted = 'Llamada finalizada';
   static const String emergencyStatusFailed = 'Error en la llamada';
+
+  // Emergencia contextual (Vision + fotos)
+  static const String emergencyContextCardTitle = 'Emergencia con contexto';
+  static const String emergencyContextCardSubtitle =
+      'Toma 2 fotos y la IA analiza la situacion antes de llamar al 911.';
+  static const String emergencyContextTitle = 'Emergencia con contexto';
+  static const String emergencyContextIntro =
+      'Captura tu rostro y la escena. OpenAI Vision determinara el tipo de '
+      'emergencia y el backend llamara con un resumen generado.';
+  static const String emergencyContextFrontTitle = 'Camara frontal';
+  static const String emergencyContextFrontSubtitle =
+      'Tu rostro y contexto personal para identificarte.';
+  static const String emergencyContextBackTitle = 'Camara trasera';
+  static const String emergencyContextBackSubtitle =
+      'La escena o entorno donde ocurre la emergencia.';
+  static const String emergencyContextPhotoTap = 'Tocar para capturar';
+  static const String emergencyContextPhotoReady = 'Lista';
+  static const String emergencyContextTextLabel = 'Descripcion opcional';
+  static const String emergencyContextTextHint =
+      'Ej: mi vecino se cayo de las escaleras';
+  static const String emergencyContextSubmit = 'Enviar emergencia con contexto';
+  static const String emergencyContextSheetTitle = 'Fotos listas';
+  static const String emergencyContextSheetSubtitle =
+      'Revisa las capturas, agrega contexto opcional y envia la alerta.';
+  static const String emergencyContextRetake = 'Volver a tomar fotos';
+  static const String emergencyContextConfirmTitle = 'Enviar emergencia?';
+  static const String emergencyContextConfirmBody =
+      'Se enviaran tus fotos, ubicacion precisa y descripcion. Vision '
+      'analizara la situacion y se iniciara la llamada al servicio de '
+      'emergencias sin interaccion en tiempo real.';
+  static const String emergencyContextConfirmAction = 'Enviar ahora';
+  static const String emergencyContextCameraError =
+      'No pudimos abrir la camara. Verifica los permisos en Ajustes.';
 }
