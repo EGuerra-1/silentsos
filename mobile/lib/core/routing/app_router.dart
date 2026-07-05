@@ -22,6 +22,42 @@ abstract final class AppRouter {
   static const String addMedication = '/medical/medications/add';
   static const String editMedication = '/medical/medications/edit';
 
+  /// Abre formulario de medicamento con ruta tipada (evita cast en pushNamed).
+  static Future<bool?> openMedicationForm(
+    BuildContext context, {
+    MedicationPlanModel? plan,
+  }) {
+    final bool isEdit = plan != null;
+    return Navigator.push<bool>(
+      context,
+      AppPageRoute<bool>(
+        settings: RouteSettings(
+          name: isEdit ? editMedication : addMedication,
+          arguments: plan,
+        ),
+        builder: (_) => MedicationFormPage(initial: plan),
+      ),
+    );
+  }
+
+  /// Abre formulario de enfermedad con ruta tipada (evita cast en pushNamed).
+  static Future<bool?> openDiseaseForm(
+    BuildContext context, {
+    UserDiseaseModel? disease,
+  }) {
+    final bool isEdit = disease != null;
+    return Navigator.push<bool>(
+      context,
+      AppPageRoute<bool>(
+        settings: RouteSettings(
+          name: isEdit ? editDisease : addDisease,
+          arguments: disease,
+        ),
+        builder: (_) => DiseaseFormPage(initial: disease),
+      ),
+    );
+  }
+
   static Route<dynamic> onGenerateRoute(RouteSettings settings) {
     // Punto unico de navegacion con transiciones animadas homogeneas.
     switch (settings.name) {
@@ -51,24 +87,24 @@ abstract final class AppRouter {
           builder: (_) => const MainShellPage(),
         );
       case addDisease:
-        return AppPageRoute<void>(
+        return AppPageRoute<bool>(
           settings: settings,
           builder: (_) => const DiseaseFormPage(),
         );
       case editDisease:
-        return AppPageRoute<void>(
+        return AppPageRoute<bool>(
           settings: settings,
           builder: (_) => DiseaseFormPage(
             initial: settings.arguments as UserDiseaseModel?,
           ),
         );
       case addMedication:
-        return AppPageRoute<void>(
+        return AppPageRoute<bool>(
           settings: settings,
           builder: (_) => const MedicationFormPage(),
         );
       case editMedication:
-        return AppPageRoute<void>(
+        return AppPageRoute<bool>(
           settings: settings,
           builder: (_) => MedicationFormPage(
             initial: settings.arguments as MedicationPlanModel?,

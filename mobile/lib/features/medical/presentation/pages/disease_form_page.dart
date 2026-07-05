@@ -49,6 +49,9 @@ class _DiseaseFormPageState extends ConsumerState<DiseaseFormPage> {
       _notesCtrl.text = initial.notes ?? '';
       _diagnosedAt = initial.diagnosedAt;
     }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(diseaseCatalogControllerProvider.notifier).load();
+    });
   }
 
   @override

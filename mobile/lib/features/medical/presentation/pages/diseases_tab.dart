@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_duration.dart';
 import '../../../../core/constants/app_spacing.dart';
 import '../../../../core/constants/app_strings.dart';
-import '../../../../core/extensions/context_extensions.dart';
 import '../../../../core/routing/app_router.dart';
 import '../../../../shared/widgets/animations/fade_slide_in.dart';
 import '../../../../shared/widgets/app_button.dart';
@@ -12,7 +11,9 @@ import '../../../../shared/widgets/error_state.dart';
 import '../../../../shared/widgets/loading_widget.dart';
 import '../../models/user_disease_model.dart';
 import '../../providers/medical_provider.dart';
+import '../utils/medical_refresh_actions.dart';
 import '../widgets/disease_card.dart';
+import '../widgets/medical_section_header.dart';
 
 /// Tab de enfermedades: listado del usuario con acceso a formulario add/edit.
 class DiseasesTab extends ConsumerWidget {
@@ -27,14 +28,19 @@ class DiseasesTab extends ConsumerWidget {
       loading: () => const Center(child: LoadingWidget()),
       error: (Object _, StackTrace __) => ErrorState(
         message: AppStrings.loadMedicalError,
-        onRetry: () => ref.read(diseasesControllerProvider.notifier).load(),
+        onRetry: () => MedicalRefreshActions.reloadDiseases(ref),
       ),
       data: (List<UserDiseaseModel> diseases) {
         return RefreshIndicator(
-          onRefresh: () => ref.read(diseasesControllerProvider.notifier).load(),
+          onRefresh: () => MedicalRefreshActions.reloadDiseases(ref),
           child: ListView(
             padding: const EdgeInsets.only(bottom: AppSpacing.xxl),
             children: <Widget>[
+              if (diseases.isNotEmpty)
+                MedicalSectionHeader(
+                  title: AppStrings.myDiseases,
+                  count: diseases.length,
+                ),
               if (diseases.isEmpty)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: AppSpacing.xl),
@@ -43,20 +49,7 @@ class DiseasesTab extends ConsumerWidget {
                     icon: Icons.coronavirus_outlined,
                   ),
                 )
-              else ...<Widget>[
-                Padding(
-                  padding: const EdgeInsets.only(
-                    left: AppSpacing.xs,
-                    bottom: AppSpacing.sm,
-                  ),
-                  child: Text(
-                    'TUS ENFERMEDADES',
-                    style: context.text.labelSmall?.copyWith(
-                      color: context.colors.onSurfaceVariant,
-                      letterSpacing: 0.8,
-                    ),
-                  ),
-                ),
+              else
                 ...List<Widget>.generate(diseases.length, (int index) {
                   final UserDiseaseModel disease = diseases[index];
                   return Padding(
@@ -69,16 +62,15 @@ class DiseasesTab extends ConsumerWidget {
                       delay: AppDuration.stagger * index,
                       child: DiseaseCard(
                         disease: disease,
-                        onEdit: () => _openForm(context, disease: disease),
+                        onEdit: () => _openForm(context, ref, disease: disease),
                       ),
                     ),
                   );
                 }),
-              ],
               AppButton(
                 label: AppStrings.addDisease,
                 trailingIcon: Icons.add_rounded,
-                onPressed: () => _openForm(context),
+                onPressed: () => _openForm(context, ref),
               ),
             ],
           ),
@@ -87,11 +79,15 @@ class DiseasesTab extends ConsumerWidget {
     );
   }
 
-  Future<void> _openForm(BuildContext context, {UserDiseaseModel? disease}) async {
-    await Navigator.pushNamed(
+  Future<void> _openForm(
+    BuildContext context,
+    WidgetRef ref, {
+    UserDiseaseModel? disease,
+  }) async {
+    final bool? saved = await AppRouter.openDiseaseForm(
       context,
-      disease == null ? AppRouter.addDisease : AppRouter.editDisease,
-      arguments: disease,
+      disease: disease,
     );
+    if (saved == true) await MedicalRefreshActions.reloadDiseases(ref);
   }
 }

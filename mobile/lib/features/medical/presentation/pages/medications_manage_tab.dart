@@ -7,24 +7,32 @@ import '../../../../core/extensions/context_extensions.dart';
 import '../../../../core/routing/app_router.dart';
 import '../../../../shared/widgets/animations/fade_slide_in.dart';
 import '../../../../shared/widgets/app_button.dart';
+import '../../../../shared/widgets/app_card.dart';
 import '../../../../shared/widgets/empty_state.dart';
 import '../../../../shared/widgets/error_state.dart';
 import '../../../../shared/widgets/loading_widget.dart';
 import '../../controllers/medical_controllers.dart';
 import '../../models/medication_models.dart';
 import '../../providers/medical_provider.dart';
-import '../../utils/medical_formatters.dart';
+import '../utils/medical_refresh_actions.dart';
+import '../widgets/consumption_history_tile.dart';
+import '../widgets/medical_section_header.dart';
 import '../widgets/medication_card.dart';
 
-/// Historial y gestion de tratamientos: listado, edicion y consumos.
+/// Gestion de tratamientos: listado, edicion e historial de consumos.
 class MedicationsManageTab extends ConsumerWidget {
   const MedicationsManageTab({super.key});
 
-  Future<void> _refresh(WidgetRef ref) async {
-    await Future.wait(<Future<void>>[
-      ref.read(medicationsControllerProvider.notifier).load(),
-      ref.read(medicalDayControllerProvider.notifier).load(),
-    ]);
+  Future<void> _openForm(
+    BuildContext context,
+    WidgetRef ref, {
+    MedicationPlanModel? plan,
+  }) async {
+    final bool? saved = await AppRouter.openMedicationForm(
+      context,
+      plan: plan,
+    );
+    if (saved == true) await MedicalRefreshActions.reloadMedications(ref);
   }
 
   @override
@@ -41,7 +49,7 @@ class MedicationsManageTab extends ConsumerWidget {
     if (plansState.hasError) {
       return ErrorState(
         message: AppStrings.loadMedicalError,
-        onRetry: () => _refresh(ref),
+        onRetry: () => MedicalRefreshActions.reloadMedications(ref),
       );
     }
 
@@ -52,21 +60,20 @@ class MedicationsManageTab extends ConsumerWidget {
             const <MedicationConsumptionModel>[];
 
     return RefreshIndicator(
-      onRefresh: () => _refresh(ref),
+      onRefresh: () => MedicalRefreshActions.reloadMedications(ref),
       child: ListView(
         padding: const EdgeInsets.only(bottom: AppSpacing.xxl),
         children: <Widget>[
+          MedicalSectionHeader(
+            title: AppStrings.myMedications,
+            count: plans.length,
+          ),
           AppButton(
             label: AppStrings.addMedication,
             trailingIcon: Icons.add_rounded,
-            onPressed: () async {
-              final bool? saved =
-                  await Navigator.pushNamed(context, AppRouter.addMedication);
-              if (saved == true) await _refresh(ref);
-            },
+            onPressed: () => _openForm(context, ref),
           ),
           const SizedBox(height: AppSpacing.lg),
-          _SectionTitle(title: AppStrings.myMedications),
           if (plans.isEmpty)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: AppSpacing.lg),
@@ -88,22 +95,17 @@ class MedicationsManageTab extends ConsumerWidget {
                   delay: AppDuration.stagger * index,
                   child: MedicationCard(
                     plan: plan,
-                    onEdit: () async {
-                      final bool? saved = await Navigator.pushNamed(
-                        context,
-                        AppRouter.editMedication,
-                        arguments: plan,
-                      );
-                      if (saved == true) await _refresh(ref);
-                    },
+                    onEdit: () => _openForm(context, ref, plan: plan),
                   ),
                 ),
               );
             }),
-          _SectionTitle(title: AppStrings.consumptionHistory),
+          MedicalSectionHeader(
+            title: AppStrings.consumptionHistory,
+            count: history.length,
+          ),
           if (history.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
+            AppCard(
               child: Text(
                 AppStrings.consumptionHistoryEmpty,
                 textAlign: TextAlign.center,
@@ -113,82 +115,12 @@ class MedicationsManageTab extends ConsumerWidget {
               ),
             )
           else
-            ...history.map(
-              (MedicationConsumptionModel item) => Padding(
-                padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-                child: _ConsumptionHistoryTile(item: item),
-              ),
+            AppCard(
+              padding: EdgeInsets.zero,
+              child: ConsumptionHistoryCard(items: history),
             ),
         ],
       ),
     );
-  }
-}
-
-class _SectionTitle extends StatelessWidget {
-  const _SectionTitle({required this.title});
-
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(
-        left: AppSpacing.xs,
-        bottom: AppSpacing.sm,
-      ),
-      child: Text(
-        title.toUpperCase(),
-        style: context.text.labelSmall?.copyWith(
-          color: context.colors.onSurfaceVariant,
-          letterSpacing: 0.8,
-        ),
-      ),
-    );
-  }
-}
-
-class _ConsumptionHistoryTile extends StatelessWidget {
-  const _ConsumptionHistoryTile({required this.item});
-
-  final MedicationConsumptionModel item;
-
-  @override
-  Widget build(BuildContext context) {
-    final ColorScheme colors = context.colors;
-    final String name = item.medicationName ?? 'Medicamento';
-    final String time = MedicalFormatters.displayTime(
-      item.scheduledTime ?? '--:--',
-    );
-    final String statusLabel = switch (item.status) {
-      'consumed' => 'Tomado',
-      'skipped' => 'Omitido',
-      'missed' => 'Perdido',
-      _ => item.status,
-    };
-
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: CircleAvatar(
-        backgroundColor: colors.surfaceContainerHigh,
-        child: Icon(_statusIcon(item.status), size: 18, color: colors.primary),
-      ),
-      title: Text(name, style: context.text.bodyMedium),
-      subtitle: Text(
-        '${item.doseLabel} · $time · $statusLabel',
-        style: context.text.bodySmall?.copyWith(
-          color: colors.onSurfaceVariant,
-        ),
-      ),
-    );
-  }
-
-  IconData _statusIcon(String status) {
-    return switch (status) {
-      'consumed' => Icons.check_circle_outline,
-      'skipped' => Icons.remove_circle_outline,
-      'missed' => Icons.error_outline,
-      _ => Icons.history_rounded,
-    };
   }
 }

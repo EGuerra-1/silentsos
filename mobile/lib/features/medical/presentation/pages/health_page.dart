@@ -1,65 +1,76 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_spacing.dart';
 import '../../../../core/constants/app_strings.dart';
-import '../../../../core/extensions/context_extensions.dart';
 import '../../../../shared/widgets/app_page_shell.dart';
 import '../../../../shared/widgets/custom_app_bar.dart';
+import '../../providers/medical_provider.dart';
+import '../widgets/medical_segment_bar.dart';
+import '../widgets/medical_tab_shell.dart';
 import 'diseases_tab.dart';
 import 'medications_tab.dart';
 
 /// Hub del modulo medico con pestanas Enfermedades | Medicamentos.
-class HealthPage extends StatefulWidget {
+class HealthPage extends ConsumerStatefulWidget {
   const HealthPage({super.key});
 
   @override
-  State<HealthPage> createState() => _HealthPageState();
+  ConsumerState<HealthPage> createState() => _HealthPageState();
 }
 
-class _HealthPageState extends State<HealthPage>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tabController;
+class _HealthPageState extends ConsumerState<HealthPage> {
+  int _selectedIndex = 0;
+  bool _diseasesLoaded = false;
+  bool _medicationsLoaded = false;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadTabData(0));
   }
 
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
+  void _loadTabData(int index) {
+    if (!mounted) return;
+
+    if (index == 0 && !_diseasesLoaded) {
+      _diseasesLoaded = true;
+      ref.read(diseasesControllerProvider.notifier).load();
+    } else if (index == 1 && !_medicationsLoaded) {
+      _medicationsLoaded = true;
+      ref.read(medicationsControllerProvider.notifier).load();
+      ref.read(medicalDayControllerProvider.notifier).load();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final ColorScheme colors = context.colors;
-
     return AppPageShell(
       appBar: const CustomAppBar(title: AppStrings.healthTitle, showBack: false),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           const SizedBox(height: AppSpacing.sm),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: colors.surfaceContainerHighest.withOpacity(0.45),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: TabBar(
-              controller: _tabController,
-              indicatorSize: TabBarIndicatorSize.tab,
-              dividerColor: Colors.transparent,
-              labelStyle: context.text.labelLarge,
-              tabs: const <Widget>[
-                Tab(text: AppStrings.diseasesTab),
-                Tab(text: AppStrings.medicationsTab),
-              ],
-            ),
-          ),
-          const SizedBox(height: AppSpacing.md),
           Expanded(
-            child: TabBarView(
-              controller: _tabController,
+            child: MedicalTabShell(
+              selectedIndex: _selectedIndex,
+              onChanged: (int index) {
+                setState(() => _selectedIndex = index);
+                _loadTabData(index);
+              },
+              options: const <MedicalSegmentOption>[
+                MedicalSegmentOption(
+                  label: AppStrings.diseasesTab,
+                  icon: Icons.coronavirus_outlined,
+                ),
+                MedicalSegmentOption(
+                  label: AppStrings.medicationsTab,
+                  icon: Icons.medication_outlined,
+                ),
+              ],
+              subtitles: const <String>[
+                AppStrings.diseasesSectionSubtitle,
+                AppStrings.medicationsSectionSubtitle,
+              ],
               children: const <Widget>[
                 DiseasesTab(),
                 MedicationsTab(),

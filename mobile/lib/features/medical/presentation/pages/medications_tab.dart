@@ -1,66 +1,50 @@
 import 'package:flutter/material.dart';
-import '../../../../core/constants/app_spacing.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_strings.dart';
-import '../../../../core/extensions/context_extensions.dart';
+import '../../providers/medical_provider.dart';
+import '../widgets/medical_segment_bar.dart';
+import '../widgets/medical_tab_shell.dart';
 import 'medications_manage_tab.dart';
 import 'medications_today_tab.dart';
 
-/// Contenedor de medicamentos con sub-pestanas: Hoy | Tratamientos.
-class MedicationsTab extends StatefulWidget {
+/// Contenedor de medicamentos: selector Hoy | Tratamientos + contenido.
+class MedicationsTab extends ConsumerStatefulWidget {
   const MedicationsTab({super.key});
 
   @override
-  State<MedicationsTab> createState() => _MedicationsTabState();
+  ConsumerState<MedicationsTab> createState() => _MedicationsTabState();
 }
 
-class _MedicationsTabState extends State<MedicationsTab>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tabController;
-
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
+class _MedicationsTabState extends ConsumerState<MedicationsTab> {
+  int _selectedIndex = 0;
 
   @override
   Widget build(BuildContext context) {
-    final ColorScheme colors = context.colors;
+    final int pendingCount =
+        ref.watch(medicalDayControllerProvider).valueOrNull?.pending.length ??
+            0;
 
-    return Column(
-      children: <Widget>[
-        DecoratedBox(
-          decoration: BoxDecoration(
-            color: colors.surfaceContainerHighest.withOpacity(0.35),
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: TabBar(
-            controller: _tabController,
-            indicatorSize: TabBarIndicatorSize.tab,
-            dividerColor: Colors.transparent,
-            labelStyle: context.text.labelLarge,
-            tabs: const <Widget>[
-              Tab(text: AppStrings.medicationsTodayTab),
-              Tab(text: AppStrings.medicationsManageTab),
-            ],
-          ),
+    return MedicalTabShell(
+      selectedIndex: _selectedIndex,
+      onChanged: (int index) => setState(() => _selectedIndex = index),
+      options: <MedicalSegmentOption>[
+        MedicalSegmentOption(
+          label: AppStrings.medicationsTodayTab,
+          icon: Icons.today_rounded,
+          badgeCount: pendingCount,
         ),
-        const SizedBox(height: AppSpacing.sm),
-        Expanded(
-          child: TabBarView(
-            controller: _tabController,
-            children: const <Widget>[
-              MedicationsTodayTab(),
-              MedicationsManageTab(),
-            ],
-          ),
+        const MedicalSegmentOption(
+          label: AppStrings.medicationsManageTab,
+          icon: Icons.medical_information_outlined,
         ),
+      ],
+      subtitles: const <String>[
+        AppStrings.medicationsTodaySubtitle,
+        AppStrings.medicationsManageSubtitle,
+      ],
+      children: const <Widget>[
+        MedicationsTodayTab(),
+        MedicationsManageTab(),
       ],
     );
   }

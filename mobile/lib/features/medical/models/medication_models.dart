@@ -204,16 +204,16 @@ class PendingMedicationModel {
 
   factory PendingMedicationModel.fromJson(Map<String, dynamic> json) {
     final String doseValue = json['dose']?.toString() ?? '';
-    final String? unitValue = json['unit'] as String?;
+    final String? unitValue = json['unit']?.toString();
 
     return PendingMedicationModel(
-      medicationPlanId: json['medication_plan_id'] as String,
-      medicationName: json['medication_name'] as String? ?? '',
+      medicationPlanId: json['medication_plan_id']?.toString() ?? '',
+      medicationName: json['medication_name']?.toString() ?? 'Medicamento',
       dose: doseValue,
       unit: unitValue,
       scheduledTime: json['scheduled_time']?.toString() ?? '',
       notes: json['schedule_notes'] as String? ?? json['notes'] as String?,
-      status: json['status'] as String? ?? 'pending',
+      status: json['status']?.toString() ?? 'pending',
     );
   }
 }
@@ -255,16 +255,16 @@ class MedicationConsumptionModel {
         json['medication_plan'] as Map<String, dynamic>?;
 
     return MedicationConsumptionModel(
-      id: json['id'] as String,
-      medicationPlanId: json['medication_plan_id'] as String,
+      id: json['id']?.toString() ?? '',
+      medicationPlanId: json['medication_plan_id']?.toString() ?? '',
       scheduledTime: json['scheduled_time']?.toString(),
       consumedAt: DateTime.tryParse(json['consumed_at']?.toString() ?? ''),
-      status: json['status'] as String? ?? '',
-      observations: json['observations'] as String?,
+      status: json['status']?.toString() ?? '',
+      observations: json['observations']?.toString(),
       medicationName:
-          version?['name'] as String? ?? legacyPlan?['name'] as String?,
-      dose: version?['dose'] as String? ?? legacyPlan?['dose'] as String?,
-      unit: version?['unit'] as String? ?? legacyPlan?['unit'] as String?,
+          version?['name']?.toString() ?? legacyPlan?['name']?.toString(),
+      dose: version?['dose']?.toString() ?? legacyPlan?['dose']?.toString(),
+      unit: version?['unit']?.toString() ?? legacyPlan?['unit']?.toString(),
     );
   }
 }

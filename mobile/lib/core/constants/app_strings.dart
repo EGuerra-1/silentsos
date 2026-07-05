@@ -61,6 +61,14 @@ abstract final class AppStrings {
   static const String healthTitle = 'Salud';
   static const String diseasesTab = 'Enfermedades';
   static const String medicationsTab = 'Medicamentos';
+  static const String diseasesSectionSubtitle =
+      'Registra y administra tus condiciones medicas.';
+  static const String medicationsSectionSubtitle =
+      'Controla tus dosis del dia y tus tratamientos.';
+  static const String medicationsTodaySubtitle =
+      'Marca las dosis que ya tomaste hoy.';
+  static const String medicationsManageSubtitle =
+      'Consulta, edita y agrega tus medicamentos.';
   static const String diseasesEmpty =
       'Aun no tienes enfermedades registradas. Agrega la primera para '
       'completar tu perfil medico.';
@@ -70,6 +78,7 @@ abstract final class AppStrings {
   static const String addDisease = 'Agregar enfermedad';
   static const String editDisease = 'Editar enfermedad';
   static const String addMedication = 'Agregar medicamento';
+  static const String addMedicationShort = 'Agregar';
   static const String editMedication = 'Actualizar tratamiento';
   static const String saveChanges = 'Guardar cambios';
   static const String diseaseCatalogLabel = 'Enfermedad del catalogo';
@@ -93,6 +102,7 @@ abstract final class AppStrings {
       'No tienes dosis pendientes por ahora. Buen trabajo.';
   static const String markTaken = 'Ya lo tome';
   static const String myMedications = 'Mis medicamentos';
+  static const String myDiseases = 'Mis enfermedades';
   static const String consumptionHistory = 'Historial de tomas';
   static const String consumptionHistoryEmpty =
       'Aun no hay registros de consumo en los ultimos 7 dias.';

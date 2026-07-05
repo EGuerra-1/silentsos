@@ -1,76 +1,119 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/services/app_logger.dart';
 import '../models/disease_catalog_model.dart';
 import '../models/medication_models.dart';
 import '../models/user_disease_model.dart';
 import '../services/medical_service.dart';
 
-/// Lista de enfermedades del usuario autenticado.
-class DiseasesController extends StateNotifier<AsyncValue<List<UserDiseaseModel>>> {
-  DiseasesController(this._service) : super(const AsyncValue.loading()) {
-    load();
+/// Base con proteccion contra actualizaciones tras dispose.
+abstract class SafeMedicalController<T> extends StateNotifier<AsyncValue<T>> {
+  SafeMedicalController(super.initialState);
+
+  bool _disposed = false;
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
   }
 
-  final MedicalService _service;
+  @protected
+  bool get isDisposed => _disposed;
 
-  Future<void> load() async {
-    state = const AsyncValue.loading();
-    state = await AsyncValue.guard<List<UserDiseaseModel>>(
-      () => _service.getUserDiseases(),
-    );
+  @protected
+  void setStateSafe(AsyncValue<T> value) {
+    if (_disposed) return;
+    state = value;
   }
 }
 
-/// Catalogo global de enfermedades (cache en memoria mientras viva el provider).
-class DiseaseCatalogController
-    extends StateNotifier<AsyncValue<List<DiseaseCatalogModel>>> {
-  DiseaseCatalogController(this._service) : super(const AsyncValue.loading()) {
-    load();
-  }
+/// Lista de enfermedades del usuario autenticado.
+class DiseasesController extends SafeMedicalController<List<UserDiseaseModel>> {
+  DiseasesController(this._service) : super(const AsyncValue.loading());
 
   final MedicalService _service;
 
   Future<void> load() async {
-    state = const AsyncValue.loading();
-    state = await AsyncValue.guard<List<DiseaseCatalogModel>>(
+    setStateSafe(const AsyncValue.loading());
+    final AsyncValue<List<UserDiseaseModel>> result =
+        await AsyncValue.guard<List<UserDiseaseModel>>(
+      () => _service.getUserDiseases(),
+    );
+    setStateSafe(result);
+  }
+}
+
+/// Catalogo global de enfermedades.
+class DiseaseCatalogController
+    extends SafeMedicalController<List<DiseaseCatalogModel>> {
+  DiseaseCatalogController(this._service) : super(const AsyncValue.loading());
+
+  final MedicalService _service;
+
+  Future<void> load() async {
+    setStateSafe(const AsyncValue.loading());
+    final AsyncValue<List<DiseaseCatalogModel>> result =
+        await AsyncValue.guard<List<DiseaseCatalogModel>>(
       () => _service.getDiseaseCatalog(),
     );
+    setStateSafe(result);
   }
 }
 
 /// Planes de medicamento del usuario.
 class MedicationsController
-    extends StateNotifier<AsyncValue<List<MedicationPlanModel>>> {
-  MedicationsController(this._service) : super(const AsyncValue.loading()) {
-    load();
-  }
+    extends SafeMedicalController<List<MedicationPlanModel>> {
+  MedicationsController(this._service) : super(const AsyncValue.loading());
 
   final MedicalService _service;
 
   Future<void> load() async {
-    state = const AsyncValue.loading();
-    state = await AsyncValue.guard<List<MedicationPlanModel>>(
+    setStateSafe(const AsyncValue.loading());
+    final AsyncValue<List<MedicationPlanModel>> result =
+        await AsyncValue.guard<List<MedicationPlanModel>>(
       () => _service.getMedications(),
     );
+    setStateSafe(result);
   }
 }
 
 /// Dosis pendientes del dia + historial reciente de consumos.
-class MedicalDayController extends StateNotifier<AsyncValue<MedicalDayState>> {
-  MedicalDayController(this._service) : super(const AsyncValue.loading()) {
-    load();
-  }
+class MedicalDayController extends SafeMedicalController<MedicalDayState> {
+  MedicalDayController(this._service) : super(const AsyncValue.loading());
 
   final MedicalService _service;
 
   Future<void> load() async {
-    state = const AsyncValue.loading();
-    state = await AsyncValue.guard<MedicalDayState>(() async {
+    setStateSafe(const AsyncValue.loading());
+
+    try {
       final List<PendingMedicationModel> pending =
           await _service.getPendingToday();
-      final List<MedicationConsumptionModel> recent =
-          await _service.getRecentConsumptions();
-      return MedicalDayState(pending: pending, recentConsumptions: recent);
-    });
+
+      List<MedicationConsumptionModel> recent =
+          const <MedicationConsumptionModel>[];
+      try {
+        recent = await _service.getRecentConsumptions();
+      } catch (error, stackTrace) {
+        AppLogger.warning(
+          '[Medical] historial de consumos no disponible',
+        );
+        AppLogger.error(
+          '[Medical] getRecentConsumptions fallo',
+          error: error,
+          stackTrace: stackTrace,
+        );
+      }
+
+      setStateSafe(
+        AsyncValue.data(
+          MedicalDayState(pending: pending, recentConsumptions: recent),
+        ),
+      );
+    } catch (error, stackTrace) {
+      setStateSafe(AsyncValue.error(error, stackTrace));
+    }
   }
 
   Future<void> markConsumption({

@@ -133,7 +133,8 @@ class MedicalRemoteDataSource {
       'medication_plan_id': medicationPlanId,
       if (scheduledTime != null && scheduledTime.isNotEmpty)
         'scheduled_time': MedicalFormatters.toApiTime(scheduledTime),
-      if (consumedAt != null) 'consumed_at': consumedAt.toUtc().toIso8601String(),
+      if (consumedAt != null)
+        'consumed_at': MedicalFormatters.toApiDateTime(consumedAt),
       if (status != null && status.isNotEmpty) 'status': status,
       if (observations != null && observations.trim().isNotEmpty)
         'observations': observations.trim(),
@@ -152,14 +153,16 @@ class MedicalRemoteDataSource {
     DateTime? to,
     String? status,
   }) async {
-    final List<String> query = <String>[];
-    if (from != null) query.add('from=${from.toUtc().toIso8601String()}');
-    if (to != null) query.add('to=${to.toUtc().toIso8601String()}');
-    if (status != null && status.isNotEmpty) query.add('status=$status');
+    final Map<String, String> query = <String, String>{};
+    if (from != null) {
+      query['from'] = MedicalFormatters.toApiDateTime(from);
+    }
+    if (to != null) query['to'] = MedicalFormatters.toApiDateTime(to);
+    if (status != null && status.isNotEmpty) query['status'] = status;
 
     final String endpoint = query.isEmpty
         ? '/medical/consumptions'
-        : '/medical/consumptions?${query.join('&')}';
+        : '/medical/consumptions?${Uri(queryParameters: query).query}';
 
     final Map<String, dynamic> result = await ApiService.fetchData(endpoint);
     return _parseList(result, MedicationConsumptionModel.fromJson);

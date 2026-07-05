@@ -28,6 +28,15 @@ abstract final class MedicalFormatters {
   /// Normaliza hora para API/comparacion (HH:mm).
   static String toApiTime(String value) => displayTime(value);
 
+  /// ISO8601 UTC sin microsegundos (compatible con validacion del backend).
+  static String toApiDateTime(DateTime dateTime) {
+    final DateTime utc = dateTime.toUtc();
+    final String iso = utc.toIso8601String();
+    final int dotIndex = iso.indexOf('.');
+    if (dotIndex == -1) return iso;
+    return '${iso.substring(0, dotIndex)}Z';
+  }
+
   static String displayDate(DateTime? date) {
     if (date == null) return 'Sin fecha';
     return '${date.day.toString().padLeft(2, '0')}/'
