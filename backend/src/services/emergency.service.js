@@ -38,7 +38,7 @@ class EmergencyService {
             where: {
                 user_id: userId,
                 status: { [Op.notIn]: ['COMPLETED', 'FAILED'] },
-                createdAt: { [Op.gte]: new Date(Date.now() - this.DUPLICATE_GUARD_WINDOW_MS) },
+                created_at: { [Op.gte]: new Date(Date.now() - this.DUPLICATE_GUARD_WINDOW_MS) },
             },
             order: [['created_at', 'DESC']],
         });
