@@ -22,3 +22,6 @@ yarn-error.log*
 # Caché de npm y yarn (opcional)
 .npm/
 .yarn/
+
+# Archivos generados en pruebas de integraciones
+storage/
