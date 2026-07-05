@@ -48,6 +48,16 @@ class TwilioController {
         return res.status(200).send(twiml);
     });
 
+    static twimlFallback = catchErrors(async (req, res) => {
+        // Twilio llega aquí si la URL principal de TwiML no respondió (dominio caído, timeout).
+        // Se lee el mensaje con la voz nativa de Twilio para no dejar la llamada en silencio.
+        const emergency = await Emergency.findByPk(req.params.emergency_id);
+        const twiml = TwilioService.buildSayFallbackTwiml(emergency?.description);
+
+        res.type('text/xml');
+        return res.status(200).send(twiml);
+    });
+
     static statusCallback = catchErrors(async (req, res) => {
         // Twilio notifica cambios de estado de la llamada.
         await EmergencyService.handleTwilioStatusCallback(

@@ -14,7 +14,15 @@ class TwilioService {
         const response = new twilio.twiml.VoiceResponse();
         response.play(audioUrl);
         response.pause({ length: 1 });
-        response.say({ language: 'es-MX' }, 'Fin del mensaje de emergencia SilentSOS.');
+        response.say({ language: 'es-MX' }, 'Fin del mensaje de emergencia.');
+        return response.toString();
+    }
+
+    // Respaldo si Twilio no logra descargar el audio (ej. dominio público mal configurado):
+    // lee el mensaje con la voz nativa de Twilio en vez de dejar la llamada en silencio.
+    static buildSayFallbackTwiml(text) {
+        const response = new twilio.twiml.VoiceResponse();
+        response.say({ language: 'es-MX' }, text || 'No se pudo cargar el mensaje de emergencia. Por favor envíe ayuda de inmediato.');
         return response.toString();
     }
 
@@ -34,7 +42,7 @@ class TwilioService {
         return response.toString();
     }
 
-    static async makeCall({ to, twimlUrl, statusCallbackUrl }) {
+    static async makeCall({ to, twimlUrl, statusCallbackUrl, fallbackUrl }) {
         // Inicia llamada saliente siempre al número de emergencia configurado.
         const client = this.getClient();
         const destination = to || integrations.twilio.emergencyNumber();
@@ -51,6 +59,10 @@ class TwilioService {
             from: integrations.twilio.fromNumber(),
             url: twimlUrl,
             method: 'GET',
+            // Si la URL principal no responde (dominio caído, timeout, etc.), Twilio
+            // reintenta aquí en vez de dejar la llamada en silencio.
+            fallbackUrl,
+            fallbackMethod: 'GET',
             statusCallback: statusCallbackUrl,
             statusCallbackMethod: 'POST',
             // Incluye "in-progress" para soportar reintento de WhatsApp en n8n.

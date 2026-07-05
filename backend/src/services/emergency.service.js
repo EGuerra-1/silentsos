@@ -270,10 +270,12 @@ class EmergencyService {
             },
         });
 
-        const twimlUrl = `${integrations.publicUrl.value()}/api/twilio/twiml/${emergency.id}`;
-        const statusCallbackUrl = `${integrations.publicUrl.value()}/api/twilio/status/${emergency.id}`;
+        const base = integrations.publicUrl.value();
+        const twimlUrl = `${base}/api/twilio/twiml/${emergency.id}`;
+        const statusCallbackUrl = `${base}/api/twilio/status/${emergency.id}`;
+        const fallbackUrl = `${base}/api/twilio/twiml-fallback/${emergency.id}`;
 
-        const call = await TwilioService.makeCall({ twimlUrl, statusCallbackUrl });
+        const call = await TwilioService.makeCall({ twimlUrl, statusCallbackUrl, fallbackUrl });
 
         await callHistory.update({
             twilio_call_sid: call.sid,
