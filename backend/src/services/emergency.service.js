@@ -1,3 +1,4 @@
+const { Op } = require('sequelize');
 const { Emergency, Triage, CallHistory, User, EmergencyContact } = require('../models');
 const MedicalService = require('./medical.service');
 const OpenAIService = require('./openai.service');
@@ -28,7 +29,27 @@ class EmergencyService {
 
     // --- CREACIÓN ---
 
+    // Evita doble disparo si el usuario presiona SOS varias veces en pocos segundos:
+    // reutiliza una emergencia activa (no COMPLETED/FAILED) creada en los últimos 60s.
+    static DUPLICATE_GUARD_WINDOW_MS = 60 * 1000;
+
+    static async _findRecentActiveEmergency(userId) {
+        return Emergency.findOne({
+            where: {
+                user_id: userId,
+                status: { [Op.notIn]: ['COMPLETED', 'FAILED'] },
+                createdAt: { [Op.gte]: new Date(Date.now() - this.DUPLICATE_GUARD_WINDOW_MS) },
+            },
+            order: [['created_at', 'DESC']],
+        });
+    }
+
     static async createUrgency(userId, payload) {
+        const existing = await this._findRecentActiveEmergency(userId);
+        if (existing) {
+            return existing;
+        }
+
         const emergency = await Emergency.create({
             user_id: userId,
             type: payload.type,
@@ -51,6 +72,11 @@ class EmergencyService {
     }
 
     static async createContextual(userId, payload) {
+        const existing = await this._findRecentActiveEmergency(userId);
+        if (existing) {
+            return existing;
+        }
+
         // type se setea a 'general' como placeholder; Vision lo actualizará tras analizar.
         const emergency = await Emergency.create({
             user_id: userId,
@@ -189,37 +215,18 @@ class EmergencyService {
         const audioUrl = `${integrations.publicUrl.value()}${stored.publicPath}`;
         await emergency.update({ status: 'AUDIO_GENERATED', audio_url: audioUrl });
 
-        const callHistory = await CallHistory.create({
-            emergency_id: emergency.id,
-            mode: emergency.call_mode,
-            status: 'queued',
-            details: {
-                triage_id: savedTriage.id,
-                sms: {
-                    nums: this.extractContactNumbers(contacts),
-                    description,
-                },
-            },
-        });
+        const nums = this.extractContactNumbers(contacts);
 
-        const twimlUrl = `${integrations.publicUrl.value()}/api/twilio/twiml/${emergency.id}`;
-        const statusCallbackUrl = `${integrations.publicUrl.value()}/api/twilio/status/${emergency.id}`;
-
-        const call = await TwilioService.makeCall({ twimlUrl, statusCallbackUrl });
-
-        await callHistory.update({
-            twilio_call_sid: call.sid,
-            status: call.status || 'initiated',
-            started_at: new Date(),
-            details: {
-                ...(callHistory.details || {}),
-                call: { sid: call.sid, to: call.to, from: call.from },
-            },
+        const callHistory = await this._attemptCall({
+            emergency,
+            triageId: savedTriage.id,
+            nums,
+            description,
+            attempt: 1,
         });
 
         await emergency.update({ status: 'CALL_STARTED' });
 
-        const nums = this.extractContactNumbers(contacts);
         if (nums.length > 0) {
             try {
                 const n8nResponse = await N8nService.sendEmergencySmsPayload({ description, nums });
@@ -247,6 +254,72 @@ class EmergencyService {
                 });
             }
         }
+    }
+
+    // Crea el registro de intento y dispara la llamada de Twilio. Reutilizado por el
+    // intento inicial y por los reintentos automáticos en caso de no-answer/busy/failed.
+    static async _attemptCall({ emergency, triageId, nums, description, attempt }) {
+        const callHistory = await CallHistory.create({
+            emergency_id: emergency.id,
+            mode: emergency.call_mode,
+            status: 'queued',
+            details: {
+                triage_id: triageId,
+                attempt,
+                sms: { nums, description },
+            },
+        });
+
+        const twimlUrl = `${integrations.publicUrl.value()}/api/twilio/twiml/${emergency.id}`;
+        const statusCallbackUrl = `${integrations.publicUrl.value()}/api/twilio/status/${emergency.id}`;
+
+        const call = await TwilioService.makeCall({ twimlUrl, statusCallbackUrl });
+
+        await callHistory.update({
+            twilio_call_sid: call.sid,
+            status: call.status || 'initiated',
+            started_at: new Date(),
+            details: {
+                ...(callHistory.details || {}),
+                call: { sid: call.sid, to: call.to, from: call.from },
+            },
+        });
+
+        return callHistory;
+    }
+
+    // Reintento automático: solo procede si no hay ya un intento en curso (anti-duplicado)
+    // y la emergencia no llegó a un estado terminal por otra vía mientras esperaba el delay.
+    static async _retryCall(emergencyId, attempt) {
+        const emergency = await Emergency.findByPk(emergencyId);
+        if (!emergency || ['COMPLETED', 'FAILED'].includes(emergency.status)) {
+            return;
+        }
+
+        const nonTerminalStatuses = ['queued', 'initiated', 'ringing', 'in-progress', 'answered'];
+        const activeCall = await CallHistory.findOne({
+            where: { emergency_id: emergencyId, status: { [Op.in]: nonTerminalStatuses } },
+            order: [['created_at', 'DESC']],
+        });
+        if (activeCall) {
+            return;
+        }
+
+        const lastCallHistory = await CallHistory.findOne({
+            where: { emergency_id: emergencyId },
+            order: [['created_at', 'DESC']],
+        });
+        const smsDetails = lastCallHistory?.details?.sms || {};
+
+        await this._attemptCall({
+            emergency,
+            triageId: lastCallHistory?.details?.triage_id || null,
+            nums: smsDetails.nums || [],
+            description: smsDetails.description || emergency.description,
+            attempt,
+        });
+
+        await emergency.update({ status: 'CALL_STARTED' });
     }
 
     static async _markFailed(emergencyId, callMode, errorMessage) {
@@ -295,6 +368,9 @@ class EmergencyService {
         }
 
         const terminalStatuses = ['completed', 'busy', 'failed', 'no-answer', 'canceled'];
+        const retryableStatuses = ['no-answer', 'busy', 'failed'];
+        const attempt = details.attempt || 1;
+        const maxAttempts = integrations.twilio.maxCallAttempts();
 
         await callHistory.update({
             status: callStatus,
@@ -303,9 +379,19 @@ class EmergencyService {
         });
 
         if (terminalStatuses.includes(callStatus)) {
-            await emergency.update({
-                status: callStatus === 'completed' ? 'COMPLETED' : 'FAILED',
-            });
+            if (callStatus === 'completed') {
+                await emergency.update({ status: 'COMPLETED' });
+            } else if (retryableStatuses.includes(callStatus) && attempt < maxAttempts) {
+                // No se contestó o falló: reintenta tras un breve delay en vez de marcar FAILED.
+                const retryDelayMs = integrations.twilio.callRetryDelayMs();
+                setTimeout(() => {
+                    this._retryCall(emergencyId, attempt + 1).catch((err) =>
+                        console.error('Fallo al reintentar llamada:', err.message)
+                    );
+                }, retryDelayMs);
+            } else {
+                await emergency.update({ status: 'FAILED' });
+            }
         }
     }
 

@@ -49,6 +49,9 @@ const integrations = {
         keys: ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_PHONE_NUMBER'],
         fromNumber: () => env('TWILIO_PHONE_NUMBER'),
         emergencyNumber: () => env('EMERGENCY_PHONE_NUMBER'),
+        // 1 reintento por defecto (2 intentos en total) si la llamada no se contesta o falla.
+        maxCallAttempts: () => Number(env('MAX_CALL_ATTEMPTS') || 2),
+        callRetryDelayMs: () => Number(env('CALL_RETRY_DELAY_MS') || 20000),
     },
     awsS3: {
         configured: () => isConfigured(['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_S3_BUCKET']),
