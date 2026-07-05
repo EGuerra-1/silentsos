@@ -18,13 +18,13 @@ class N8nService {
     return headers;
   }
 
-  static async sendEmergencySmsPayload({ description, nums }) {
-    const payload = {
-      description,
-      nums
-    };
+  // POST genérico a un webhook n8n con timeout, reutilizado por los distintos flujos.
+  static async postWebhook(url, payload, label = 'n8n webhook') {
+    if (!url) {
+      throw new Error(`${label} no configurado en .env`);
+    }
 
-    const request = fetch(integrations.n8n.webhookUrl(), {
+    const request = fetch(url, {
       method: 'POST',
       headers: this.getHeaders(),
       body: JSON.stringify(payload)
@@ -38,10 +38,27 @@ class N8nService {
     const body = await response.json().catch(() => ({}));
 
     if (!response.ok) {
-      throw new Error(`n8n webhook error (${response.status}): ${JSON.stringify(body)}`);
+      throw new Error(`${label} error (${response.status}): ${JSON.stringify(body)}`);
     }
 
     return body;
+  }
+
+  static async sendEmergencySmsPayload({ description, nums }) {
+    return this.postWebhook(
+      integrations.n8n.webhookUrl(),
+      { description, nums },
+      'n8n emergency webhook'
+    );
+  }
+
+  // Notifica a los contactos que el usuario tomó su medicamento programado.
+  static async sendMedicationTakenPayload({ message, nums }) {
+    return this.postWebhook(
+      integrations.n8n.medicationWebhookUrl(),
+      { message, nums },
+      'n8n medication webhook'
+    );
   }
 }
 

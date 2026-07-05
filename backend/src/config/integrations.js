@@ -40,6 +40,7 @@ const integrations = {
         configured: () => isConfigured(['N8N_EMERGENCY_WEBHOOK_URL']),
         keys: ['N8N_EMERGENCY_WEBHOOK_URL'],
         webhookUrl: () => env('N8N_EMERGENCY_WEBHOOK_URL'),
+        medicationWebhookUrl: () => env('N8N_MEDICATION_WEBHOOK_URL'),
         webhookSecret: () => env('N8N_EMERGENCY_WEBHOOK_SECRET'),
         timeoutMs: () => Number(env('N8N_WEBHOOK_TIMEOUT_MS') || 10000),
     },
