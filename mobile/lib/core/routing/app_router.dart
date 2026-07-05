@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../../features/auth/presentation/pages/login_page.dart';
 import '../../features/auth/presentation/pages/register_step_one_page.dart';
 import '../../features/auth/presentation/pages/register_step_two_page.dart';
-import '../../features/home/presentation/pages/home_page.dart';
+import '../../features/shell/presentation/pages/main_shell_page.dart';
 import '../../features/splash/presentation/pages/splash_page.dart';
 import 'app_page_route.dart';
 
@@ -40,7 +40,7 @@ abstract final class AppRouter {
       case home:
         return AppPageRoute<void>(
           settings: settings,
-          builder: (_) => const HomePage(),
+          builder: (_) => const MainShellPage(),
         );
       default:
         return AppPageRoute<void>(

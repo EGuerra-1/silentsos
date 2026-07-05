@@ -18,4 +18,27 @@ class AuthController extends StateNotifier<AsyncValue<AuthUser?>> {
       () => _service.login(email: email, password: password),
     );
   }
+
+  Future<void> registerWithEmergencyContact({
+    required String fullName,
+    required String email,
+    required String cellphone,
+    required String password,
+    required String emergencyFullName,
+    required String emergencyCellphone,
+    required String emergencyRelationship,
+  }) async {
+    state = const AsyncValue.loading();
+    state = await AsyncValue.guard<AuthUser?>(
+      () => _service.registerWithEmergencyContact(
+        fullName: fullName,
+        email: email,
+        cellphone: cellphone,
+        password: password,
+        emergencyFullName: emergencyFullName,
+        emergencyCellphone: emergencyCellphone,
+        emergencyRelationship: emergencyRelationship,
+      ),
+    );
+  }
 }

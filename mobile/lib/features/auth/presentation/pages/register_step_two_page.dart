@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_duration.dart';
 import '../../../../core/constants/app_spacing.dart';
 import '../../../../core/constants/app_strings.dart';
 import '../../../../core/extensions/context_extensions.dart';
 import '../../../../core/routing/app_router.dart';
+import '../../../../core/services/app_logger.dart';
 import '../../../../shared/widgets/animations/fade_slide_in.dart';
 import '../../../../shared/widgets/animations/staggered_column.dart';
 import '../../../../shared/widgets/app_button.dart';
@@ -12,7 +14,9 @@ import '../../../../shared/widgets/app_text_field.dart';
 import '../../../../shared/widgets/custom_app_bar.dart';
 import '../../../../shared/widgets/info_note.dart';
 import '../../../../shared/widgets/labeled_field.dart';
+import '../../entities/auth_user.dart';
 import '../../models/register_draft.dart';
+import '../../providers/auth_provider.dart';
 import '../widgets/auth_header.dart';
 
 const List<String> _relationshipOptions = <String>[
@@ -26,19 +30,19 @@ const List<String> _relationshipOptions = <String>[
 
 /// Registro paso 2 de Stitch: badge "PASO 2 DE 2" con progreso completo,
 /// icono de corazon, campos etiquetados con iconos y CTA fijo.
-class RegisterStepTwoPage extends StatefulWidget {
+class RegisterStepTwoPage extends ConsumerStatefulWidget {
   const RegisterStepTwoPage({super.key});
 
   @override
-  State<RegisterStepTwoPage> createState() => _RegisterStepTwoPageState();
+  ConsumerState<RegisterStepTwoPage> createState() => _RegisterStepTwoPageState();
 }
 
-class _RegisterStepTwoPageState extends State<RegisterStepTwoPage> {
+class _RegisterStepTwoPageState extends ConsumerState<RegisterStepTwoPage> {
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   final TextEditingController _contactNameCtrl = TextEditingController();
   final TextEditingController _contactPhoneCtrl = TextEditingController();
   String? _relationship;
-  bool _loading = false;
+  String? _apiError;
   AutovalidateMode _autovalidateMode = AutovalidateMode.disabled;
 
   @override
@@ -50,6 +54,8 @@ class _RegisterStepTwoPageState extends State<RegisterStepTwoPage> {
 
   @override
   Widget build(BuildContext context) {
+    final AsyncValue<AuthUser?> authState = ref.watch(authControllerProvider);
+
     // Draft del paso 1; disponible para el envio final al backend.
     final RegisterDraft? draft =
         ModalRoute.of(context)?.settings.arguments as RegisterDraft?;
@@ -64,7 +70,7 @@ class _RegisterStepTwoPageState extends State<RegisterStepTwoPage> {
         child: AppButton(
           label: AppStrings.registerFinish,
           trailingIcon: Icons.check_circle_outline,
-          isLoading: _loading,
+          isLoading: authState.isLoading,
           onPressed: () => _finish(draft),
         ),
       ),
@@ -139,6 +145,14 @@ class _RegisterStepTwoPageState extends State<RegisterStepTwoPage> {
                 message: AppStrings.contactPrivacyNote,
                 icon: Icons.verified_user_outlined,
               ),
+              if (_apiError != null) ...<Widget>[
+                const SizedBox(height: AppSpacing.md),
+                InfoNote(
+                  message: _apiError!,
+                  icon: Icons.error_outline,
+                  tone: InfoNoteTone.error,
+                ),
+              ],
               const SizedBox(height: AppSpacing.lg),
             ],
           ),
@@ -150,16 +164,40 @@ class _RegisterStepTwoPageState extends State<RegisterStepTwoPage> {
   Future<void> _finish(RegisterDraft? draft) async {
     setState(() => _autovalidateMode = AutovalidateMode.onUserInteraction);
     if (!(_formKey.currentState?.validate() ?? false)) return;
+    if (draft == null) {
+      setState(() => _apiError = 'No se encontro la informacion del paso 1.');
+      return;
+    }
+    if (_relationship == null) return;
 
-    setState(() => _loading = true);
-    // Simulacion del alta; aqui se enviaria draft + contacto al backend.
-    await Future<void>.delayed(const Duration(milliseconds: 500));
+    setState(() => _apiError = null);
+
+    await ref.read(authControllerProvider.notifier).registerWithEmergencyContact(
+          fullName: draft.fullName,
+          email: draft.email,
+          cellphone: draft.phone,
+          password: draft.password,
+          emergencyFullName: _contactNameCtrl.text.trim(),
+          emergencyCellphone: _contactPhoneCtrl.text.trim(),
+          emergencyRelationship: _relationship!,
+        );
+
+    final AsyncValue<AuthUser?> state = ref.read(authControllerProvider);
     if (!mounted) return;
-    setState(() => _loading = false);
-    Navigator.pushNamedAndRemoveUntil(
-      context,
-      AppRouter.home,
-      (Route<dynamic> route) => false,
+    state.when(
+      data: (AuthUser? user) {
+        if (user == null) return;
+        Navigator.pushNamedAndRemoveUntil(
+          context,
+          AppRouter.home,
+          (Route<dynamic> route) => false,
+        );
+      },
+      loading: () {},
+      error: (Object error, StackTrace _) {
+        AppLogger.error('[UI][RegisterStep2] error capturado', error: error);
+        setState(() => _apiError = _prettyError(error));
+      },
     );
   }
 
@@ -168,5 +206,14 @@ class _RegisterStepTwoPageState extends State<RegisterStepTwoPage> {
       return AppStrings.validationRequired;
     }
     return null;
+  }
+
+  String _prettyError(Object error) {
+    final String raw = error.toString();
+    const String prefix = 'AppException(';
+    if (raw.startsWith(prefix) && raw.endsWith(')')) {
+      return raw.substring(prefix.length, raw.length - 1);
+    }
+    return raw;
   }
 }

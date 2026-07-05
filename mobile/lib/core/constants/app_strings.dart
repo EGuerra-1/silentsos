@@ -10,7 +10,7 @@ abstract final class AppStrings {
   static const String loginTitle = 'Hola, estamos aqui para ayudarte';
   static const String loginSubtitle =
       'Inicia sesion en SilentSOS para continuar de forma segura.';
-  static const String loginEmailLabel = 'Email o Telefono';
+  static const String loginEmailLabel = 'Correo electronico';
   static const String loginPasswordLabel = 'Contrasena';
   static const String loginSubmit = 'Entrar';
   static const String loginLegalPrefix = 'Al continuar, aceptas nuestros ';
@@ -51,7 +51,7 @@ abstract final class AppStrings {
 
   // Validaciones
   static const String validationRequired = 'Este campo es obligatorio';
-  static const String validationEmail = 'Ingresa un correo o telefono valido';
+  static const String validationEmail = 'Ingresa un correo electronico valido';
   static const String validationPasswordLength =
       'Debe tener al menos 8 caracteres';
   static const String validationPasswordMatch =

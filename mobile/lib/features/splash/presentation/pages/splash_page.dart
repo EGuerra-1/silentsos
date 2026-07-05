@@ -29,8 +29,13 @@ class _SplashPageState extends ConsumerState<SplashPage> {
 
     Future<void>(() async {
       await ref.read(splashControllerProvider).waitForBoot();
+      final bool hasSession =
+          await ref.read(splashControllerProvider).hasActiveSession();
       if (!mounted) return;
-      Navigator.pushReplacementNamed(context, AppRouter.login);
+      Navigator.pushReplacementNamed(
+        context,
+        hasSession ? AppRouter.home : AppRouter.login,
+      );
     });
   }
 

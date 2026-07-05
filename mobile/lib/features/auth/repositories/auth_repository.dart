@@ -14,4 +14,32 @@ class AuthRepository {
   }) {
     return _remoteDataSource.login(email: email, password: password);
   }
+
+  Future<void> register({
+    required String fullName,
+    required String email,
+    required String cellphone,
+    required String password,
+  }) {
+    return _remoteDataSource.register(
+      fullName: fullName,
+      email: email,
+      cellphone: cellphone,
+      password: password,
+    );
+  }
+
+  Future<void> createEmergencyContact({
+    required String fullName,
+    required String cellphone,
+    required String relationship,
+    required String token,
+  }) {
+    return _remoteDataSource.createEmergencyContact(
+      fullName: fullName,
+      cellphone: cellphone,
+      relationship: relationship,
+      token: token,
+    );
+  }
 }

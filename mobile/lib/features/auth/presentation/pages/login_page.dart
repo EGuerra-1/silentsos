@@ -5,6 +5,7 @@ import '../../../../core/constants/app_spacing.dart';
 import '../../../../core/constants/app_strings.dart';
 import '../../../../core/extensions/context_extensions.dart';
 import '../../../../core/routing/app_router.dart';
+import '../../../../core/services/app_logger.dart';
 import '../../../../shared/widgets/animations/staggered_column.dart';
 import '../../../../shared/widgets/app_button.dart';
 import '../../../../shared/widgets/app_card.dart';
@@ -32,6 +33,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   final TextEditingController _passwordCtrl = TextEditingController();
   AutovalidateMode _autovalidateMode = AutovalidateMode.disabled;
   bool _hasAuthError = false;
+  String _authErrorMessage = AppStrings.loginError;
 
   @override
   void dispose() {
@@ -47,7 +49,11 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     ref.listen<AsyncValue<AuthUser?>>(authControllerProvider,
         (_, AsyncValue<AuthUser?> next) {
       if (next.hasError) {
-        setState(() => _hasAuthError = true);
+        AppLogger.error('[UI][Login] error capturado', error: next.error);
+        setState(() {
+          _hasAuthError = true;
+          _authErrorMessage = _prettyError(next.error);
+        });
       } else if (next.hasValue && next.value != null) {
         Navigator.pushReplacementNamed(context, AppRouter.home);
       }
@@ -95,10 +101,10 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                         duration: AppDuration.normal,
                         curve: AppDuration.easeOut,
                         child: _hasAuthError
-                            ? const Padding(
-                                padding: EdgeInsets.only(top: AppSpacing.md),
+                            ? Padding(
+                                padding: const EdgeInsets.only(top: AppSpacing.md),
                                 child: InfoNote(
-                                  message: AppStrings.loginError,
+                                  message: _authErrorMessage,
                                   icon: Icons.error_outline,
                                   tone: InfoNoteTone.error,
                                 ),
@@ -137,6 +143,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     if (isLoading) return;
     setState(() {
       _hasAuthError = false;
+      _authErrorMessage = AppStrings.loginError;
       _autovalidateMode = AutovalidateMode.onUserInteraction;
     });
     if (!(_formKey.currentState?.validate() ?? false)) return;
@@ -151,6 +158,8 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     if (value == null || value.trim().isEmpty) {
       return AppStrings.validationRequired;
     }
+    final RegExp regex = RegExp(r'^[^@]+@[^@]+\.[^@]+$');
+    if (!regex.hasMatch(value.trim())) return AppStrings.validationEmail;
     return null;
   }
 
@@ -158,6 +167,16 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     if (value == null || value.isEmpty) return AppStrings.validationRequired;
     if (value.length < 8) return AppStrings.validationPasswordLength;
     return null;
+  }
+
+  String _prettyError(Object? error) {
+    if (error == null) return AppStrings.loginError;
+    final String raw = error.toString();
+    const String prefix = 'AppException(';
+    if (raw.startsWith(prefix) && raw.endsWith(')')) {
+      return raw.substring(prefix.length, raw.length - 1);
+    }
+    return raw;
   }
 }
 
