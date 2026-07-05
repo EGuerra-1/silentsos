@@ -1,5 +1,6 @@
 const multer = require('multer');
 const path = require('path');
+const sharp = require('sharp');
 const catchErrors = require('../utils/tryCatch');
 const ApiResponse = require('../utils/apiResponse');
 const EmergencyService = require('../services/emergency.service');
@@ -28,6 +29,21 @@ const uploadContextualImages = upload.fields([
 class EmergencyController {
     static routes = '/emergencies';
 
+    // Fotos de celular pueden pesar varios MB y tardar en subir a OpenAI, arriesgando el
+    // timeout de Vision. Se redimensionan y comprimen antes de enviarlas (mismo formato JPEG).
+    static async compressImageForVision(buffer) {
+        try {
+            return await sharp(buffer)
+                .rotate() // corrige orientación EXIF de fotos tomadas con el celular en distintos ángulos
+                .resize({ width: 1024, height: 1024, fit: 'inside', withoutEnlargement: true })
+                .jpeg({ quality: 75 })
+                .toBuffer();
+        } catch (err) {
+            console.error('No se pudo comprimir la imagen, se usa el original:', err.message);
+            return buffer;
+        }
+    }
+
     static createUrgency = catchErrors(async (req, res) => {
         const emergency = await EmergencyService.createUrgency(req.user.id, req.body);
         return ApiResponse.success(res, {
@@ -55,14 +71,21 @@ class EmergencyController {
         const frontFile = files.front_image[0];
         const backFile  = files.back_image[0];
 
+        // Redimensiona/comprime en memoria antes de enviar a OpenAI: acelera el análisis
+        // y evita que fotos pesadas de celular agoten el timeout de Vision.
+        const [frontBuffer, backBuffer] = await Promise.all([
+            this.compressImageForVision(frontFile.buffer),
+            this.compressImageForVision(backFile.buffer),
+        ]);
+
         // Las imágenes se convierten a base64 en memoria y se envían directo a OpenAI.
         // No se guarda nada en disco para conservar espacio.
         const payload = {
             ...req.body,
-            front_image_base64: frontFile.buffer.toString('base64'),
-            front_image_mime:   frontFile.mimetype,
-            back_image_base64:  backFile.buffer.toString('base64'),
-            back_image_mime:    backFile.mimetype,
+            front_image_base64: frontBuffer.toString('base64'),
+            front_image_mime:   'image/jpeg',
+            back_image_base64:  backBuffer.toString('base64'),
+            back_image_mime:    'image/jpeg',
         };
 
         const emergency = await EmergencyService.createContextual(req.user.id, payload);

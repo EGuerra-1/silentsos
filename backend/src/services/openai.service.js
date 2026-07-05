@@ -2,6 +2,8 @@ const OpenAI = require('openai');
 const { integrations } = require('../config/integrations');
 
 // Respuesta mínima para no frenar el flujo si OpenAI falla o expira por timeout.
+// No repite datos que ya se agregan por separado en el mensaje final (nombre, discapacidad,
+// ubicación, contexto del usuario), para evitar información duplicada en el speech.
 const FALLBACK_TRIAGE = {
     tipo_emergencia: 'general',
     nivel: 'medio',
@@ -9,7 +11,7 @@ const FALLBACK_TRIAGE = {
     lesiones: [],
     sintomas: ['situacion de emergencia no evaluada completamente'],
     requiere_ambulancia: true,
-    resumen: 'Emergencia reportada por usuario con discapacidad auditiva. Se requiere asistencia inmediata.',
+    resumen: 'No fue posible analizar las imágenes en el tiempo disponible; se requiere asistencia inmediata en el lugar reportado.',
 };
 
 class OpenAIService {
@@ -20,17 +22,14 @@ class OpenAIService {
         return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     }
 
-    static getFallbackTriage(contextText = '') {
-        const resumen = contextText
-            ? `${FALLBACK_TRIAGE.resumen} Contexto adicional: ${contextText}`
-            : FALLBACK_TRIAGE.resumen;
-        return { ...FALLBACK_TRIAGE, resumen, source: 'fallback' };
+    static getFallbackTriage() {
+        return { ...FALLBACK_TRIAGE, source: 'fallback' };
     }
 
     static buildPrompt(contextText) {
         // Se fuerza formato JSON para facilitar guardado directo en BD.
         return [
-            'Analiza las imágenes de la emergencia y responde SOLO con JSON válido con esta estructura exacta:',
+            'Analiza las imágenes de la emergencia (cámara frontal y trasera si están disponibles) y responde SOLO con JSON válido con esta estructura exacta:',
             '{',
             '  "tipo_emergencia": "medical|general",',
             '  "nivel": "bajo|medio|alto|critico",',
@@ -38,10 +37,12 @@ class OpenAIService {
             '  "lesiones": ["string"],',
             '  "sintomas": ["string"],',
             '  "requiere_ambulancia": true,',
-            '  "resumen": "texto breve en español para operador de emergencias 911"',
+            '  "resumen": "texto breve en español para el operador de emergencias 911"',
             '}',
             'tipo_emergencia debe ser "medical" si hay señales de lesión, enfermedad o emergencia médica visible.',
-            contextText ? `Contexto adicional del usuario: ${contextText}` : '',
+            'El campo "resumen" debe describir ÚNICAMENTE lo que observas en las imágenes (fuego, humo, heridas, lugar, riesgos visibles, personas involucradas, etc). Sé específico sobre lo que ves.',
+            'NO menciones en "resumen" la discapacidad auditiva del reportante, su nombre, ni si puede hablar o escuchar: esa información ya la agrega el sistema por separado y no debe repetirse.',
+            contextText ? `Contexto adicional escrito por el usuario (compleméntalo con lo que ves, no lo repitas textualmente): ${contextText}` : '',
         ].join('\n');
     }
 
@@ -89,12 +90,18 @@ class OpenAIService {
             const response = await Promise.race([request, timeout]);
             const content = response.choices?.[0]?.message?.content;
 
-            if (!content) return this.getFallbackTriage(contextText);
+            if (!content) {
+                console.error('OpenAI Vision devolvió respuesta vacía; usando fallback.');
+                return this.getFallbackTriage();
+            }
 
             const parsed = JSON.parse(content);
             return { ...parsed, source: 'openai' };
-        } catch {
-            return { ...this.getFallbackTriage(contextText), source: 'fallback' };
+        } catch (error) {
+            // Se loguea el motivo real (timeout, error de API, JSON inválido, etc.) para poder
+            // diagnosticar por qué Vision no proceso las imágenes en un caso puntual.
+            console.error('OpenAI Vision falló, usando fallback:', error.message);
+            return this.getFallbackTriage();
         }
     }
 }

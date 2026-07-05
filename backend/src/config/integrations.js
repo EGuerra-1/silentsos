@@ -20,7 +20,9 @@ const integrations = {
         configured: () => isConfigured(['OPENAI_API_KEY']),
         keys: ['OPENAI_API_KEY'],
         model: () => env('OPENAI_MODEL') || 'gpt-4o',
-        timeoutMs: () => Number(env('OPENAI_TRIAGE_TIMEOUT_MS') || 15000),
+        // Corre en background (no bloquea la respuesta 202 a Flutter); 30s da margen
+        // suficiente para fotos de celular sin caer al fallback innecesariamente.
+        timeoutMs: () => Number(env('OPENAI_TRIAGE_TIMEOUT_MS') || 30000),
     },
     elevenlabs: {
         configured: () => isConfigured(['ELEVENLABS_API_KEY', 'ELEVENLABS_VOICE_ID']),
